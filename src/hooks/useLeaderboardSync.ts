@@ -17,7 +17,7 @@ export function useLeaderboardSync(
   stateRef.current = gameState;
 
   const syncNow = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) return { error: null };
 
     const { error } = await submitScore(stateRef.current);
     if (error) {
@@ -25,6 +25,8 @@ export function useLeaderboardSync(
     } else {
       lastSyncRef.current = Date.now();
     }
+
+    return { error };
   }, [userId, onSyncError]);
 
   useEffect(() => {

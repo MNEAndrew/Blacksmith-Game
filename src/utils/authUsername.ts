@@ -1,5 +1,5 @@
 const USERNAME_PATTERN = /^[a-z0-9_-]+$/;
-const INTERNAL_EMAIL_DOMAIN = 'forge-rush.local';
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_USERNAME_LENGTH = 3;
 const MAX_USERNAME_LENGTH = 20;
 const MIN_PASSWORD_LENGTH = 6;
@@ -14,14 +14,27 @@ export function normalizeUsername(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-export function usernameToEmail(username: string): string {
-  return `${username}@${INTERNAL_EMAIL_DOMAIN}`;
+export function normalizeEmail(raw: string): string {
+  return raw.trim().toLowerCase();
 }
 
 export function emailToUsername(email: string): string | null {
-  const suffix = `@${INTERNAL_EMAIL_DOMAIN}`;
-  if (!email.endsWith(suffix)) return null;
-  return email.slice(0, -suffix.length);
+  const localPart = email.split('@')[0]?.replace(/[^a-z0-9_-]/gi, '').toLowerCase();
+  return localPart || null;
+}
+
+export function validateEmail(raw: string): { valid: boolean; email: string; error?: string } {
+  const email = normalizeEmail(raw);
+
+  if (!email) {
+    return { valid: false, email, error: 'Email is required.' };
+  }
+
+  if (!EMAIL_PATTERN.test(email)) {
+    return { valid: false, email, error: 'Enter a valid email address.' };
+  }
+
+  return { valid: true, email };
 }
 
 export function validateUsername(raw: string): UsernameValidation {
@@ -83,7 +96,7 @@ export function mapAuthError(message: string): string {
     return 'That username is already taken.';
   }
   if (lower.includes('email not confirmed')) {
-    return 'Account not activated. Disable email confirmation in Supabase for @forge-rush.local accounts.';
+    return 'Email is not confirmed yet. Check your inbox, then try logging in again.';
   }
   if (lower.includes('signup is disabled')) {
     return 'Sign-ups are disabled on this server.';

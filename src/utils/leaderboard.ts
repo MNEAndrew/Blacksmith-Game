@@ -1,11 +1,19 @@
-import { supabase } from '../lib/supabase';
+import { SUPABASE_NOT_CONFIGURED_MESSAGE, supabase } from '../lib/supabase';
 import type { GameState } from '../types/game';
 
+function toLeaderboardInteger(value: number): number {
+  return Math.max(0, Math.floor(Number.isFinite(value) ? value : 0));
+}
+
 export async function submitScore(state: GameState): Promise<{ error: string | null }> {
-  const reputation = Math.floor(state.resources.reputation);
-  const coinsEarned = Math.floor(state.stats.totalCoinsEarned);
-  const itemsCrafted = Math.floor(state.stats.totalItemsCrafted);
-  const totalClicks = Math.floor(state.stats.totalClicks);
+  if (!supabase) {
+    return { error: SUPABASE_NOT_CONFIGURED_MESSAGE };
+  }
+
+  const reputation = toLeaderboardInteger(state.resources.reputation);
+  const coinsEarned = toLeaderboardInteger(state.stats.totalCoinsEarned);
+  const itemsCrafted = toLeaderboardInteger(state.stats.totalItemsCrafted);
+  const totalClicks = toLeaderboardInteger(state.stats.totalClicks);
 
   const { error } = await supabase.rpc('submit_score', {
     new_reputation: reputation,
@@ -29,6 +37,10 @@ export async function fetchLeaderboard(limit = 25): Promise<{
   }>;
   error: string | null;
 }> {
+  if (!supabase) {
+    return { data: [], error: SUPABASE_NOT_CONFIGURED_MESSAGE };
+  }
+
   const { data, error } = await supabase
     .from('leaderboard')
     .select('user_id, username, reputation, coins_earned, items_crafted, total_clicks, updated_at')
@@ -47,6 +59,10 @@ export async function ensurePlayerRows(
   username: string,
   state?: GameState,
 ): Promise<{ error: string | null }> {
+  if (!supabase) {
+    return { error: SUPABASE_NOT_CONFIGURED_MESSAGE };
+  }
+
   const { error: profileError } = await supabase.from('profiles').upsert(
     {
       id: userId,
@@ -61,10 +77,10 @@ export async function ensurePlayerRows(
     return { error: profileError.message };
   }
 
-  const reputation = Math.floor(state?.resources.reputation ?? 0);
-  const coinsEarned = Math.floor(state?.stats.totalCoinsEarned ?? 0);
-  const itemsCrafted = Math.floor(state?.stats.totalItemsCrafted ?? 0);
-  const totalClicks = Math.floor(state?.stats.totalClicks ?? 0);
+  const reputation = toLeaderboardInteger(state?.resources.reputation ?? 0);
+  const coinsEarned = toLeaderboardInteger(state?.stats.totalCoinsEarned ?? 0);
+  const itemsCrafted = toLeaderboardInteger(state?.stats.totalItemsCrafted ?? 0);
+  const totalClicks = toLeaderboardInteger(state?.stats.totalClicks ?? 0);
 
   const { error: leaderboardError } = await supabase.from('leaderboard').upsert(
     {

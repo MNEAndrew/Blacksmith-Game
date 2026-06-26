@@ -77,7 +77,7 @@ export function deductResources(
   const next = { ...resources };
   for (const [key, amount] of Object.entries(required)) {
     const resourceKey = key as keyof Resources;
-    next[resourceKey] -= amount ?? 0;
+    next[resourceKey] = Math.max(0, next[resourceKey] - (amount ?? 0));
   }
   return next;
 }
@@ -91,7 +91,10 @@ export function getReputationGain(item: CraftableItem, modifiers: GameModifiers)
 }
 
 export function getInventoryCount(state: GameState): number {
-  return Object.values(state.inventory).reduce((sum, count) => sum + count, 0);
+  return Object.values(state.inventory).reduce(
+    (sum, count) => sum + (Number.isFinite(count) && count > 0 ? count : 0),
+    0,
+  );
 }
 
 export function getTotalProductionPerSecond(modifiers: GameModifiers): number {
@@ -126,9 +129,10 @@ export function canPurchaseUpgrade(state: GameState, upgradeId: string): boolean
 }
 
 export function formatNumber(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 10_000) return `${(value / 1_000).toFixed(1)}K`;
-  return Math.floor(value).toLocaleString();
+  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+  if (safeValue >= 1_000_000) return `${(safeValue / 1_000_000).toFixed(1)}M`;
+  if (safeValue >= 10_000) return `${(safeValue / 1_000).toFixed(1)}K`;
+  return Math.floor(safeValue).toLocaleString();
 }
 
 export function formatUnlockRequirement(req: UnlockRequirement): string {

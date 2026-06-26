@@ -47,6 +47,7 @@ function App() {
 
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const [syncBusy, setSyncBusy] = useState(false);
 
   const handleSyncError = useCallback(
     (message: string) => {
@@ -55,7 +56,7 @@ function App() {
     [addToast],
   );
 
-  useLeaderboardSync(state, user?.id ?? null, handleSyncError);
+  const { syncNow } = useLeaderboardSync(state, user?.id ?? null, handleSyncError);
 
   const {
     entries: leaderboardEntries,
@@ -71,7 +72,7 @@ function App() {
   }, [resetGame]);
 
   const handleSignUp = useCallback(
-    (username: string, password: string) => signUp(username, password, state),
+    (email: string, username: string, password: string) => signUp(email, username, password, state),
     [signUp, state],
   );
 
@@ -81,6 +82,21 @@ function App() {
       addToast(result.error, 'warning');
     }
   }, [signOut, addToast]);
+
+  const handleManualSync = useCallback(async () => {
+    if (!user) return;
+
+    setSyncBusy(true);
+    try {
+      const result = await syncNow();
+      if (!result.error) {
+        addToast('Leaderboard score synced.', 'success');
+        refreshLeaderboard();
+      }
+    } finally {
+      setSyncBusy(false);
+    }
+  }, [user, syncNow, addToast, refreshLeaderboard]);
 
   return (
     <div className="app">
@@ -93,8 +109,8 @@ function App() {
           </div>
         </div>
         <div className="game-header__actions">
-          {!authLoading && isConfigured && (
-            profile && user ? (
+          {!authLoading && (
+            isConfigured && profile && user ? (
               <UserMenu
                 username={profile.username}
                 reputation={state.resources.reputation}
@@ -107,7 +123,7 @@ function App() {
                 className="secondary-btn"
                 onClick={() => setShowAuth(true)}
               >
-                Sign In
+                {isConfigured ? 'Sign In' : 'Guest Mode'}
               </button>
             )
           )}
@@ -149,7 +165,9 @@ function App() {
             playerRank={playerRank}
             currentUserId={user?.id ?? null}
             enabled={isConfigured}
+            syncBusy={syncBusy}
             onRefresh={refreshLeaderboard}
+            onSyncScore={handleManualSync}
           />
           <UpgradePanel state={state} onBuy={buyUpgrade} />
           <AchievementsPanel state={state} />
@@ -169,6 +187,7 @@ function App() {
 
       <AuthPanel
         open={showAuth}
+        configured={isConfigured}
         onClose={() => setShowAuth(false)}
         onSignUp={handleSignUp}
         onSignIn={signIn}

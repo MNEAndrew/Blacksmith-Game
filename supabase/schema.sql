@@ -1,10 +1,10 @@
 -- Forge Rush Supabase schema
 -- Run this in the Supabase SQL Editor for your project.
 --
--- IMPORTANT: In Supabase Dashboard → Authentication → Providers → Email,
--- disable "Confirm email". Fake @forge-rush.local addresses cannot receive mail.
+-- The frontend uses Supabase email/password authentication with a separate
+-- username stored in public.profiles and public.leaderboard.
 
--- ─── Profiles ───────────────────────────────────────────────────────────────
+-- Profiles
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -29,7 +29,7 @@ create policy "Users can update own profile"
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
--- ─── Leaderboard ────────────────────────────────────────────────────────────
+-- Leaderboard
 
 create table if not exists public.leaderboard (
   user_id uuid primary key references auth.users (id) on delete cascade,
@@ -59,9 +59,9 @@ create policy "Users can update own leaderboard row"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
--- ─── Score submission RPC ───────────────────────────────────────────────────
+-- Score submission RPC
 -- Only the authenticated user can update their row. Reputation only increases
--- if the submitted value is higher. Other stats use greatest() to prevent rollback cheating.
+-- if the submitted value is higher. Other stats use greatest() to prevent rollback.
 
 create or replace function public.submit_score(
   new_reputation bigint,

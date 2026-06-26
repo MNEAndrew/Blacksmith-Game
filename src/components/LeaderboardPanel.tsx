@@ -1,3 +1,4 @@
+import { SUPABASE_NOT_CONFIGURED_MESSAGE } from '../lib/supabase';
 import type { LeaderboardEntry } from '../types/auth';
 import { formatNumber } from '../utils/gameLogic';
 
@@ -8,7 +9,9 @@ interface LeaderboardPanelProps {
   playerRank: number;
   currentUserId: string | null;
   enabled: boolean;
+  syncBusy: boolean;
   onRefresh: () => void;
+  onSyncScore: () => void;
 }
 
 export function LeaderboardPanel({
@@ -18,13 +21,15 @@ export function LeaderboardPanel({
   playerRank,
   currentUserId,
   enabled,
+  syncBusy,
   onRefresh,
+  onSyncScore,
 }: LeaderboardPanelProps) {
   if (!enabled) {
     return (
       <section className="panel leaderboard-panel" aria-labelledby="leaderboard-heading">
         <h2 id="leaderboard-heading">Leaderboard</h2>
-        <p className="panel-subtitle">Add Supabase env vars to enable online rankings.</p>
+        <p className="panel-subtitle">{SUPABASE_NOT_CONFIGURED_MESSAGE}</p>
       </section>
     );
   }
@@ -36,15 +41,28 @@ export function LeaderboardPanel({
           <h2 id="leaderboard-heading">Leaderboard</h2>
           <p className="panel-subtitle">Top smiths ranked by reputation.</p>
         </div>
-        <button
-          type="button"
-          className="secondary-btn"
-          onClick={onRefresh}
-          disabled={loading}
-          aria-label="Refresh leaderboard"
-        >
-          {loading ? '…' : '↻'}
-        </button>
+        <div className="leaderboard-actions">
+          {currentUserId && (
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={onSyncScore}
+              disabled={syncBusy}
+            >
+              {syncBusy ? 'Syncing...' : 'Sync Score'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={onRefresh}
+            disabled={loading}
+            aria-label="Refresh leaderboard"
+            title="Refresh leaderboard"
+          >
+            {loading ? '...' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {playerRank > 0 && (
@@ -61,7 +79,6 @@ export function LeaderboardPanel({
         <ol className="leaderboard-list">
           {entries.map((entry, index) => {
             const isYou = entry.user_id === currentUserId;
-            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : null;
 
             return (
               <li
@@ -69,11 +86,11 @@ export function LeaderboardPanel({
                 className={`leaderboard-row ${isYou ? 'leaderboard-row--you' : ''}`}
               >
                 <span className="leaderboard-row__rank">
-                  {medal ?? `#${index + 1}`}
+                  #{index + 1}
                 </span>
                 <span className="leaderboard-row__name">{entry.username}</span>
                 <span className="leaderboard-row__score">
-                  {formatNumber(entry.reputation)} ⭐
+                  {formatNumber(entry.reputation)} rep
                 </span>
               </li>
             );

@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { SUPABASE_NOT_CONFIGURED_MESSAGE, isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Profile } from '../types/auth';
 import type { GameState } from '../types/game';
 import {
   emailToUsername,
   mapAuthError,
-  usernameToEmail,
+  validateEmail,
   validatePassword,
   validateUsername,
 } from '../utils/authUsername';
 import { ensurePlayerRows } from '../utils/leaderboard';
 
+export interface AuthActionResult {
+  error: string | null;
+  message?: string;
+}
+
 async function fetchProfile(userId: string): Promise<Profile | null> {
+  if (!supabase) return null;
+
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -48,32 +55,39 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (!supabase) {
       setLoading(false);
       return;
     }
 
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      if (data.session?.user) {
-        loadProfile(data.session.user).finally(() => {
-          if (mounted) setLoading(false);
-        });
-      } else {
-        setLoading(false);
-      }
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!mounted) return;
+
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
+
+        if (data.session?.user) {
+          loadProfile(data.session.user).finally(() => {
+            if (mounted) setLoading(false);
+          });
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) setLoading(false);
+      });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 
       if (nextSession?.user) {
-        loadProfile(nextSession.user);
+        loadProfile(nextSession.user).catch(() => setProfile(null));
       } else {
         setProfile(null);
       }
@@ -86,9 +100,19 @@ export function useAuth() {
   }, [loadProfile]);
 
   const signUp = useCallback(
-    async (rawUsername: string, password: string, gameState?: GameState) => {
-      if (!isSupabaseConfigured) {
-        return { error: 'Online accounts are not configured.' };
+    async (
+      rawEmail: string,
+      rawUsername: string,
+      password: string,
+      gameState?: GameState,
+    ): Promise<AuthActionResult> => {
+      if (!supabase) {
+        return { error: SUPABASE_NOT_CONFIGURED_MESSAGE };
+      }
+
+      const emailResult = validateEmail(rawEmail);
+      if (!emailResult.valid) {
+        return { error: emailResult.error ?? 'Invalid email address.' };
       }
 
       const usernameResult = validateUsername(rawUsername);
@@ -103,9 +127,8 @@ export function useAuth() {
 
       setAuthBusy(true);
       try {
-        const email = usernameToEmail(usernameResult.username);
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: emailResult.email,
           password,
           options: {
             data: { username: usernameResult.username },
@@ -122,8 +145,8 @@ export function useAuth() {
 
         if (!data.session) {
           return {
-            error:
-              'Account created but not signed in. Disable email confirmation in Supabase (Authentication → Email) for @forge-rush.local sign-ups.',
+            error: null,
+            message: 'Account created. Check your email to confirm it, then log in.',
           };
         }
 
@@ -147,14 +170,14 @@ export function useAuth() {
   );
 
   const signIn = useCallback(
-    async (rawUsername: string, password: string) => {
-      if (!isSupabaseConfigured) {
-        return { error: 'Online accounts are not configured.' };
+    async (rawEmail: string, password: string): Promise<AuthActionResult> => {
+      if (!supabase) {
+        return { error: SUPABASE_NOT_CONFIGURED_MESSAGE };
       }
 
-      const usernameResult = validateUsername(rawUsername);
-      if (!usernameResult.valid) {
-        return { error: usernameResult.error ?? 'Invalid username.' };
+      const emailResult = validateEmail(rawEmail);
+      if (!emailResult.valid) {
+        return { error: emailResult.error ?? 'Invalid email address.' };
       }
 
       const passwordResult = validatePassword(password);
@@ -164,8 +187,10 @@ export function useAuth() {
 
       setAuthBusy(true);
       try {
-        const email = usernameToEmail(usernameResult.username);
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: emailResult.email,
+          password,
+        });
 
         if (error) {
           return { error: mapAuthError(error.message) };
@@ -183,10 +208,16 @@ export function useAuth() {
     [loadProfile],
   );
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (): Promise<AuthActionResult> => {
+    if (!supabase) {
+      return { error: null };
+    }
+
     setAuthBusy(true);
     try {
       await supabase.auth.signOut();
+      setSession(null);
+      setUser(null);
       setProfile(null);
       return { error: null };
     } catch (err) {
