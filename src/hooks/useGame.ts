@@ -348,5 +348,6 @@ export function useGame() {
     sellAll,
     buyUpgrade,
     resetGame,
+    addToast,
   };
 }
