@@ -1,6 +1,13 @@
 import { UPGRADES } from '../data/upgrades';
 import type { GameState } from '../types/game';
-import { canPurchaseUpgrade, getUpgradeCost, getUpgradeLevel } from '../utils/gameLogic';
+import { MATERIAL_LABELS } from '../types/game';
+import {
+  canPurchaseUpgrade,
+  formatUnlockRequirement,
+  getUpgradeCost,
+  getUpgradeLevel,
+  meetsUnlockRequirement,
+} from '../utils/gameLogic';
 
 interface UpgradePanelProps {
   state: GameState;
@@ -12,24 +19,26 @@ function getEffectDescription(upgradeId: string, level: number): string {
   if (!upgrade) return '';
 
   switch (upgrade.effectType) {
-    case 'orePerClick':
-      return `+${level} ore per click`;
-    case 'woodPerClick':
-      return `+${level} wood per click`;
+    case 'materialPerClick':
+      return `+${level} material per manual click`;
     case 'sellMultiplier':
       return `+${Math.round(level * upgrade.effectPerLevel * 100)}% sell value`;
-    case 'orePerSecond':
-      return `${(level * upgrade.effectPerLevel).toFixed(1)} ore/s`;
-    case 'woodPerSecond':
-      return `${(level * upgrade.effectPerLevel).toFixed(1)} wood/s`;
+    case 'materialPerSecond':
+      return upgrade.materialKey
+        ? `${(level * upgrade.effectPerLevel).toFixed(1)} ${MATERIAL_LABELS[upgrade.materialKey].toLowerCase()}/s`
+        : `${(level * upgrade.effectPerLevel).toFixed(1)} material/s`;
     case 'autoSell':
       return `${level} auto-sale/s (scaled)`;
-    case 'unlockGems':
-      return level > 0 ? 'Gem polishing unlocked' : 'Unlocks gem polishing';
     case 'automationSpeed':
       return `+${Math.round(level * upgrade.effectPerLevel * 100)}% automation speed`;
     case 'reputationMultiplier':
       return `+${Math.round(level * upgrade.effectPerLevel * 100)}% reputation`;
+    case 'minerSpecialist':
+      return upgrade.materialKey
+        ? `${MATERIAL_LABELS[upgrade.materialKey]} specialist hired`
+        : 'Specialist hired';
+    case 'treasureHunter':
+      return level > 0 ? `${Math.min(100, level * 10)} gem search slots` : 'Unlocks gem expeditions';
     default:
       return '';
   }
@@ -45,6 +54,7 @@ export function UpgradePanel({ state, onBuy }: UpgradePanelProps) {
           const level = getUpgradeLevel(state, upgrade.id);
           const maxed = level >= upgrade.maxLevel;
           const cost = getUpgradeCost(upgrade.id, level);
+          const unlocked = !upgrade.unlockRequirement || meetsUnlockRequirement(upgrade.unlockRequirement, state);
           const canBuy = canPurchaseUpgrade(state, upgrade.id);
 
           return (
@@ -59,6 +69,11 @@ export function UpgradePanel({ state, onBuy }: UpgradePanelProps) {
               {level > 0 && (
                 <p className="upgrade-card__effect">{getEffectDescription(upgrade.id, level)}</p>
               )}
+              {!unlocked && upgrade.unlockRequirement && (
+                <p className="upgrade-card__effect">
+                  Requires {formatUnlockRequirement(upgrade.unlockRequirement)}
+                </p>
+              )}
               <button
                 type="button"
                 className="upgrade-btn"
@@ -66,7 +81,7 @@ export function UpgradePanel({ state, onBuy }: UpgradePanelProps) {
                 onClick={() => onBuy(upgrade.id)}
                 aria-label={`Buy ${upgrade.name} for ${cost} coins`}
               >
-                {maxed ? '✓ Max Level' : `Buy — ${cost} 🪙`}
+                {maxed ? 'Max Level' : `Buy - ${cost} coins`}
               </button>
             </article>
           );

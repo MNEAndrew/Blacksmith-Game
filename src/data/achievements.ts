@@ -1,4 +1,6 @@
 import type { Achievement } from '../types/game';
+import { SPECIALIST_MATERIALS } from '../types/game';
+import { getCraftedPickaxeCount } from '../utils/gameLogic';
 
 export const ACHIEVEMENTS: Achievement[] = [
   {
@@ -16,6 +18,20 @@ export const ACHIEVEMENTS: Achievement[] = [
     check: (state) => state.stats.totalItemsCrafted >= 1,
   },
   {
+    id: 'wood-pickaxe-master',
+    name: 'Wood Pickaxe Master',
+    description: 'Craft 100 Wood Pickaxes.',
+    emoji: '⛏',
+    check: (state) => getCraftedPickaxeCount(state, 'wood') >= 100,
+  },
+  {
+    id: 'iron-age',
+    name: 'Iron Age',
+    description: 'Craft 100 Copper Pickaxes to unlock iron.',
+    emoji: '⚒',
+    check: (state) => getCraftedPickaxeCount(state, 'copper') >= 100,
+  },
+  {
     id: 'coin-collector',
     name: 'Coin Collector',
     description: 'Earn 200 coins total.',
@@ -26,7 +42,7 @@ export const ACHIEVEMENTS: Achievement[] = [
     id: 'master-smith',
     name: 'Master Smith',
     description: 'Craft 40 items.',
-    emoji: '⚒️',
+    emoji: '⚒',
     check: (state) => state.stats.totalItemsCrafted >= 40,
   },
   {
@@ -44,30 +60,20 @@ export const ACHIEVEMENTS: Achievement[] = [
     check: (state) => state.stats.totalUpgradesPurchased >= 6,
   },
   {
-    id: 'gem-polisher',
-    name: 'Gem Polisher',
-    description: 'Polish 15 gems.',
-    emoji: '💎',
-    check: (state) => state.stats.totalGemsPolished >= 15,
-  },
-  {
-    id: 'automation-king',
-    name: 'Automation King',
-    description: 'Own 3 automation upgrades at once.',
-    emoji: '🤖',
-    check: (state) => {
-      const autoIds = ['apprentice-smith', 'lumber-helper', 'trade-cart'];
-      return autoIds.filter((id) => (state.upgradeLevels[id] ?? 0) > 0).length >= 3;
-    },
-  },
-  {
-    id: 'legendary-smith',
-    name: 'Legendary Smith',
-    description: 'Craft a Stormforged Axe or Royal Anvil Plate.',
-    emoji: '🏆',
+    id: 'specialist-crew',
+    name: 'Specialist Crew',
+    description: 'Hire 3 advanced miner specialists.',
+    emoji: '⚙',
     check: (state) =>
-      (state.inventory['stormforged-axe'] ?? 0) > 0 ||
-      (state.inventory['royal-anvil-plate'] ?? 0) > 0 ||
-      state.stats.totalItemsCrafted >= 60,
+      SPECIALIST_MATERIALS.filter((material) =>
+        (state.upgradeLevels[`${material}-miner-specialist`] ?? 0) > 0,
+      ).length >= 3,
+  },
+  {
+    id: 'mithril-smith',
+    name: 'Mithril Smith',
+    description: 'Craft a Mithril Pickaxe.',
+    emoji: '🏆',
+    check: (state) => (state.craftedCounts['mithril-pickaxe'] ?? 0) > 0,
   },
 ];

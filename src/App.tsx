@@ -9,6 +9,7 @@ import { InventoryPanel } from './components/InventoryPanel';
 import { ResourceBar } from './components/ResourceBar';
 import { StatsPanel } from './components/StatsPanel';
 import { Toast } from './components/Toast';
+import { TreasureHunterPanel } from './components/TreasureHunterPanel';
 import { UpgradePanel } from './components/UpgradePanel';
 import { UserMenu } from './components/UserMenu';
 import { useAuth } from './hooks/useAuth';
@@ -23,13 +24,12 @@ function App() {
     modifiers,
     toasts,
     floatingTexts,
-    mineOre,
-    chopWood,
-    polishGems,
+    gatherMaterial,
     craftItem,
     sellItem,
     sellAll,
     buyUpgrade,
+    sendTreasureHunter,
     resetGame,
     addToast,
   } = useGame();
@@ -148,16 +148,16 @@ function App() {
             path="/"
             element={(
               <>
-                <ResourceBar resources={state.resources} />
+                <ResourceBar state={state} />
 
                 <main className="game-main">
                   <div className="main-column">
                     <ActionPanel
+                      state={state}
                       modifiers={modifiers}
-                      onMineOre={mineOre}
-                      onChopWood={chopWood}
-                      onPolishGems={polishGems}
+                      onGatherMaterial={gatherMaterial}
                     />
+                    <TreasureHunterPanel state={state} onSend={sendTreasureHunter} />
                     <CraftingPanel state={state} modifiers={modifiers} onCraft={craftItem} />
                     <InventoryPanel
                       state={state}

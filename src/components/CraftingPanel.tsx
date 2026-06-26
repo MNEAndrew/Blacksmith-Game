@@ -1,8 +1,11 @@
 import { CRAFTABLE_ITEMS } from '../data/items';
-import type { GameModifiers, GameState } from '../types/game';
+import type { GameModifiers, GameState, ResourceKey } from '../types/game';
+import { MATERIAL_LABELS } from '../types/game';
 import {
   canAffordResources,
   formatUnlockRequirement,
+  getCraftableProgressInfo,
+  getPickaxeCraftProgress,
   getReputationGain,
   getSellPrice,
   isItemUnlocked,
@@ -14,12 +17,17 @@ interface CraftingPanelProps {
   onCraft: (itemId: string) => void;
 }
 
-function formatRequirements(required: Partial<Record<string, number>>): string {
-  const parts: string[] = [];
-  if (required.ore) parts.push(`${required.ore} ore`);
-  if (required.wood) parts.push(`${required.wood} wood`);
-  if (required.gems) parts.push(`${required.gems} gems`);
-  return parts.join(' · ');
+const RESOURCE_LABELS: Record<ResourceKey, string> = {
+  ...MATERIAL_LABELS,
+  coins: 'coins',
+  reputation: 'reputation',
+};
+
+function formatRequirements(required: Partial<Record<ResourceKey, number>>): string {
+  const parts = Object.entries(required)
+    .filter(([, amount]) => (amount ?? 0) > 0)
+    .map(([key, amount]) => `${amount} ${RESOURCE_LABELS[key as ResourceKey].toLowerCase()}`);
+  return parts.join(' / ');
 }
 
 export function CraftingPanel({ state, modifiers, onCraft }: CraftingPanelProps) {
@@ -33,6 +41,11 @@ export function CraftingPanel({ state, modifiers, onCraft }: CraftingPanelProps)
           const affordable = canAffordResources(state.resources, item.requiredResources);
           const sellPrice = getSellPrice(item, modifiers);
           const repGain = getReputationGain(item, modifiers);
+          const progress = getCraftableProgressInfo(item, state);
+          const percent = Math.round(progress.ratio * 100);
+          const pickaxeProgress = item.pickaxeMaterial
+            ? getPickaxeCraftProgress(state, item.pickaxeMaterial)
+            : null;
 
           return (
             <article
@@ -49,10 +62,24 @@ export function CraftingPanel({ state, modifiers, onCraft }: CraftingPanelProps)
               <p className="craft-card__desc">{item.description}</p>
               <div className="craft-card__meta">
                 <span>Cost: {formatRequirements(item.requiredResources)}</span>
-                <span>Sells: {sellPrice} 🪙 · +{repGain} ⭐</span>
+                <span>Sells: {sellPrice} coins / +{repGain} rep</span>
+                {pickaxeProgress && (
+                  <span>
+                    Crafted: {pickaxeProgress.current} / {pickaxeProgress.required}
+                  </span>
+                )}
+              </div>
+              <div className="progress-block craft-card__progress" aria-label={`${item.name} progress`}>
+                <div className="progress-block__row">
+                  <span>{progress.label}</span>
+                  <strong>{percent}%</strong>
+                </div>
+                <div className="progress-track">
+                  <span className="progress-fill" style={{ width: `${percent}%` }} />
+                </div>
               </div>
               {!unlocked ? (
-                <p className="craft-card__lock">🔒 {formatUnlockRequirement(item.unlockRequirement)}</p>
+                <p className="craft-card__lock">Locked: {formatUnlockRequirement(item.unlockRequirement)}</p>
               ) : (
                 <button
                   type="button"
@@ -61,7 +88,7 @@ export function CraftingPanel({ state, modifiers, onCraft }: CraftingPanelProps)
                   onClick={() => onCraft(item.id)}
                   aria-label={`Craft ${item.name}`}
                 >
-                  {affordable ? '🔥 Forge Item' : 'Need Resources'}
+                  {affordable ? 'Forge Item' : 'Need Resources'}
                 </button>
               )}
             </article>
