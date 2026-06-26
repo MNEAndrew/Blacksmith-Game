@@ -12,6 +12,8 @@ import {
   computeModifiers,
   deductGems,
   deductResources,
+  getCraftingSpecialistCostPerMinute,
+  getCraftingSpecialistCraftKey,
   getPreviousMaterial,
   getReputationGain,
   getSellPrice,
@@ -24,6 +26,7 @@ import { clearSave, loadGame, saveGame } from '../utils/saveGame';
 
 let toastId = 0;
 let floatId = 0;
+const GAME_TICK_MS = 100;
 
 export function useGame() {
   const [state, setState] = useState<GameState>(() => loadGame() ?? createInitialState());
@@ -144,6 +147,34 @@ export function useGame() {
       return checkAchievements(next);
     });
   }, [addToast, checkAchievements]);
+
+  const toggleCraftingSpecialist = useCallback((itemId: string) => {
+    const item = ITEMS_BY_ID[itemId];
+    if (!item) return;
+
+    setState((prev) => {
+      if (!isItemUnlocked(item, prev)) return prev;
+
+      const active = !!prev.activeCraftingSpecialists[itemId];
+      const activeCraftingSpecialists = { ...prev.activeCraftingSpecialists };
+      const activeCrafts = { ...prev.activeCrafts };
+
+      if (active) {
+        delete activeCraftingSpecialists[itemId];
+        delete activeCrafts[getCraftingSpecialistCraftKey(itemId)];
+        addToast(`${item.name} specialist fired.`, 'warning');
+      } else {
+        activeCraftingSpecialists[itemId] = true;
+        addToast(`${item.name} specialist hired.`, 'info');
+      }
+
+      return {
+        ...prev,
+        activeCraftingSpecialists,
+        activeCrafts,
+      };
+    });
+  }, [addToast]);
 
   const sellItem = useCallback((itemId: string, quantity = 1) => {
     const item = ITEMS_BY_ID[itemId];
@@ -317,12 +348,119 @@ export function useGame() {
           }
         }
 
+        const activeSpecialistItems = Object.keys(next.activeCraftingSpecialists)
+          .filter((itemId) => next.activeCraftingSpecialists[itemId])
+          .map((itemId) => ITEMS_BY_ID[itemId])
+          .filter((item) => item && isItemUnlocked(item, next));
+
+        if (activeSpecialistItems.length > 0) {
+          const totalPayrollPerMinute = activeSpecialistItems.reduce(
+            (sum, item) => sum + getCraftingSpecialistCostPerMinute(item, modifiers),
+            0,
+          );
+          const payrollThisTick = totalPayrollPerMinute * (GAME_TICK_MS / 60_000);
+
+          if (next.resources.coins <= 0 || next.resources.coins < payrollThisTick) {
+            next = {
+              ...next,
+              resources: {
+                ...next.resources,
+                coins: Math.max(0, next.resources.coins - payrollThisTick),
+              },
+              activeCraftingSpecialists: {},
+              activeCrafts: Object.fromEntries(
+                Object.entries(next.activeCrafts).filter(([key]) => !key.startsWith('specialist:')),
+              ),
+            };
+            changed = true;
+            setTimeout(() => {
+              addToast('Crafting specialists stopped because the forge ran out of coins.', 'warning');
+            }, 0);
+          } else {
+            next = {
+              ...next,
+              resources: {
+                ...next.resources,
+                coins: next.resources.coins - payrollThisTick,
+              },
+            };
+            changed = true;
+
+            for (const item of activeSpecialistItems) {
+              const craftKey = getCraftingSpecialistCraftKey(item.id);
+              let activeCraft = next.activeCrafts[craftKey];
+
+              if (!activeCraft && canAffordCraftable(next, item)) {
+                next = {
+                  ...next,
+                  activeCrafts: {
+                    ...next.activeCrafts,
+                    [craftKey]: {
+                      itemId: item.id,
+                      elapsedMs: 0,
+                      requiredMs: item.requiredCraftTimeMs ?? 1_000,
+                      source: 'expert',
+                      expertId: craftKey,
+                    },
+                  },
+                };
+                activeCraft = next.activeCrafts[craftKey];
+              }
+
+              if (!activeCraft) continue;
+
+              const elapsedMs = activeCraft.elapsedMs + (GAME_TICK_MS * modifiers.automationSpeed);
+              if (elapsedMs >= activeCraft.requiredMs) {
+                const activeCrafts = { ...next.activeCrafts };
+                delete activeCrafts[craftKey];
+
+                if (canAffordCraftable(next, item)) {
+                  next = {
+                    ...next,
+                    resources: deductResources(next.resources, item.requiredResources),
+                    gemInventory: deductGems(next.gemInventory, item.requiredGems),
+                    activeCrafts,
+                    inventory: {
+                      ...next.inventory,
+                      [item.id]: (next.inventory[item.id] ?? 0) + 1,
+                    },
+                    craftedCounts: {
+                      ...next.craftedCounts,
+                      [item.id]: (next.craftedCounts[item.id] ?? 0) + 1,
+                    },
+                    stats: {
+                      ...next.stats,
+                      totalItemsCrafted: next.stats.totalItemsCrafted + 1,
+                    },
+                  };
+                } else {
+                  next = {
+                    ...next,
+                    activeCrafts,
+                  };
+                }
+              } else {
+                next = {
+                  ...next,
+                  activeCrafts: {
+                    ...next.activeCrafts,
+                    [craftKey]: {
+                      ...activeCraft,
+                      elapsedMs,
+                    },
+                  },
+                };
+              }
+            }
+          }
+        }
+
         return changed ? checkAchievements(next) : prev;
       });
-    }, 100);
+    }, GAME_TICK_MS);
 
     return () => clearInterval(interval);
-  }, [checkAchievements]);
+  }, [addToast, checkAchievements]);
 
   const modifiers = computeModifiers(state);
 
@@ -334,6 +472,7 @@ export function useGame() {
     gatherMaterial,
     craftItem,
     unlockMaterial,
+    toggleCraftingSpecialist,
     sellItem,
     buyUpgrade,
     sendTreasureHunter,

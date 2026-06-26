@@ -289,6 +289,17 @@ export function getCraftProgressRatio(progress?: CraftProgress): number {
   return Math.min(1, Math.max(0, progress.elapsedMs / progress.requiredMs));
 }
 
+export function getCraftingSpecialistCraftKey(itemId: string): string {
+  return `specialist:${itemId}`;
+}
+
+export function getCraftingSpecialistCostPerMinute(
+  item: CraftableItem,
+  modifiers: GameModifiers,
+): number {
+  return Math.max(1, Math.ceil(getSellPrice(item, modifiers) * 0.1));
+}
+
 export function getAssignedExpertForItem(
   state: GameState,
   itemId: string,
@@ -312,6 +323,18 @@ export function getCraftableProgressInfo(
       ratio: getCraftProgressRatio(manualCraft),
       label: 'Crafting',
     };
+  }
+
+  if (state.activeCraftingSpecialists[item.id]) {
+    const specialistCraft = state.activeCrafts[getCraftingSpecialistCraftKey(item.id)];
+    if (specialistCraft) {
+      return {
+        current: specialistCraft.elapsedMs,
+        required: specialistCraft.requiredMs,
+        ratio: getCraftProgressRatio(specialistCraft),
+        label: 'Specialist crafting',
+      };
+    }
   }
 
   const expert = getAssignedExpertForItem(state, item.id);

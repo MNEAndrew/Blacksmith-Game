@@ -99,6 +99,7 @@ function normalizeGameState(value: unknown): GameState {
   const craftedCounts = asRecord(raw.craftedCounts);
   const upgradeLevels = asRecord(raw.upgradeLevels);
   const achievementsUnlocked = asRecord(raw.achievementsUnlocked);
+  const activeCraftingSpecialists = asRecord(raw.activeCraftingSpecialists);
   const normalizedResources = { ...INITIAL_RESOURCES };
   const normalizedCraftedCounts = Object.fromEntries(
     Object.entries(craftedCounts)
@@ -176,6 +177,10 @@ function normalizeGameState(value: unknown): GameState {
         .filter(([, unlocked]) => unlocked === true),
     ) as Record<string, boolean>,
     blacksmithExperts: normalizeExperts(raw.blacksmithExperts),
+    activeCraftingSpecialists: Object.fromEntries(
+      Object.entries(activeCraftingSpecialists)
+        .filter(([itemId, active]) => ITEMS_BY_ID[itemId] && active === true),
+    ) as Record<string, boolean>,
     activeCrafts: normalizeActiveCrafts(raw.activeCrafts),
   };
 }

@@ -372,7 +372,40 @@ body {
   gap: 0.85rem;
 }
 
+.craft-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border-metal);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.craft-tab {
+  flex: 1 1 120px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+
+.craft-tab:hover,
+.craft-tab--active {
+  border-color: rgba(255, 140, 50, 0.28);
+  background: rgba(255, 140, 50, 0.12);
+  color: var(--ember-glow);
+}
+
 .craft-card {
+  position: relative;
   padding: 1rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-metal);
@@ -394,6 +427,7 @@ body {
   gap: 0.65rem;
   align-items: flex-start;
   margin-bottom: 0.5rem;
+  padding-right: 3.75rem;
 }
 
 .craft-card__emoji {
@@ -448,6 +482,39 @@ body {
   margin: 0;
   font-size: 0.8rem;
   color: var(--warning);
+}
+
+.specialist-toggle {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  min-width: 3.05rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--border-metal);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, opacity 0.2s;
+}
+
+.specialist-toggle:hover:not(:disabled) {
+  border-color: var(--ember);
+  color: var(--ember-glow);
+}
+
+.specialist-toggle--active {
+  border-color: var(--success);
+  background: rgba(92, 184, 92, 0.18);
+  color: #a7f0a7;
+}
+
+.specialist-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .craft-btn,
@@ -716,6 +783,37 @@ body {
   font-weight: 700;
   color: var(--ember-glow);
   font-variant-numeric: tabular-nums;
+}
+
+.stats-page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.stats-page__hero {
+  display: grid;
+  gap: 0.55rem;
+  justify-items: center;
+  padding: 1.25rem 0 0.5rem;
+  text-align: center;
+}
+
+.stats-page__hero h2 {
+  margin: 0;
+  color: var(--ember-glow);
+  font-size: clamp(1.8rem, 5vw, 3rem);
+}
+
+.stats-page__hero p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.stats-page__back {
+  width: auto;
+  margin-top: 0.4rem;
+  text-decoration: none;
 }
 
 /* Online score */

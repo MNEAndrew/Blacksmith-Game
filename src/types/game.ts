@@ -60,6 +60,16 @@ export const GEM_LABELS: Record<GemKey, string> = {
 
 export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'mythic';
 
+export type CraftableCategory = 'tools' | 'melee' | 'ranged' | 'armor' | 'accessories';
+
+export const CRAFTABLE_CATEGORY_LABELS: Record<CraftableCategory, string> = {
+  tools: 'Tools',
+  melee: 'Melee',
+  ranged: 'Ranged',
+  armor: 'Armor',
+  accessories: 'Accessories',
+};
+
 export interface PickaxeCraftRequirement {
   material: MaterialKey;
   count: number;
@@ -85,6 +95,7 @@ export interface CraftableItem {
   unlockRequirement: UnlockRequirement;
   emoji: string;
   rarity: Rarity;
+  category: CraftableCategory;
   pickaxeMaterial?: MaterialKey;
 }
 
@@ -159,6 +170,7 @@ export interface GameState {
   stats: GameStats;
   achievementsUnlocked: Record<string, boolean>;
   blacksmithExperts: BlacksmithExpert[];
+  activeCraftingSpecialists: Record<string, boolean>;
   activeCrafts: Record<string, CraftProgress>;
 }
 
@@ -250,6 +262,7 @@ export function createInitialState(): GameState {
     stats: { ...INITIAL_STATS },
     achievementsUnlocked: {},
     blacksmithExperts: INITIAL_BLACKSMITH_EXPERTS.map((expert) => ({ ...expert })),
+    activeCraftingSpecialists: {},
     activeCrafts: {},
   };
 }

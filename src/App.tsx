@@ -7,7 +7,6 @@ import { CraftingPanel } from './components/CraftingPanel';
 import { FloatingText } from './components/FloatingText';
 import { InventoryPanel } from './components/InventoryPanel';
 import { ResourceBar } from './components/ResourceBar';
-import { StatsPanel } from './components/StatsPanel';
 import { Toast } from './components/Toast';
 import { TreasureHunterPanel } from './components/TreasureHunterPanel';
 import { UpgradePanel } from './components/UpgradePanel';
@@ -16,6 +15,7 @@ import { useAuth } from './hooks/useAuth';
 import { useGame } from './hooks/useGame';
 import { useLeaderboardSync } from './hooks/useLeaderboardSync';
 import { LeaderboardPage } from './pages/LeaderboardPage';
+import { StatsPage } from './pages/StatsPage';
 import './styles.css';
 
 function App() {
@@ -27,6 +27,7 @@ function App() {
     gatherMaterial,
     craftItem,
     unlockMaterial,
+    toggleCraftingSpecialist,
     sellItem,
     buyUpgrade,
     sendTreasureHunter,
@@ -111,6 +112,9 @@ function App() {
             <NavLink to="/leaderboard" className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
               Leaderboard
             </NavLink>
+            <NavLink to="/stats" className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
+              Stats
+            </NavLink>
           </nav>
 
           <div className="game-header__actions">
@@ -163,6 +167,7 @@ function App() {
                       modifiers={modifiers}
                       onCraft={craftItem}
                       onUnlockMaterial={unlockMaterial}
+                      onToggleSpecialist={toggleCraftingSpecialist}
                     />
                     <InventoryPanel
                       state={state}
@@ -174,7 +179,6 @@ function App() {
                   <aside className="side-column">
                     <UpgradePanel state={state} onBuy={buyUpgrade} />
                     <AchievementsPanel state={state} />
-                    <StatsPanel state={state} modifiers={modifiers} />
 
                     <section className="panel online-panel" aria-labelledby="online-heading">
                       <h2 id="online-heading">Online Score</h2>
@@ -208,6 +212,10 @@ function App() {
                 enabled={isConfigured}
               />
             )}
+          />
+          <Route
+            path="/stats"
+            element={<StatsPage state={state} modifiers={modifiers} />}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

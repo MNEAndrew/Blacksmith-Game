@@ -1,16 +1,19 @@
+import { useState } from 'react';
 import { CRAFTABLE_ITEMS } from '../data/items';
-import type { GameModifiers, GameState, MaterialKey, ResourceKey } from '../types/game';
-import { GEM_LABELS, MATERIAL_LABELS } from '../types/game';
+import type { CraftableCategory, GameModifiers, GameState, MaterialKey, ResourceKey } from '../types/game';
+import { CRAFTABLE_CATEGORY_LABELS, GEM_LABELS, MATERIAL_LABELS } from '../types/game';
 import {
   canAffordCraftable,
   canUnlockMaterial,
   formatUnlockRequirement,
   getCraftableProgressInfo,
+  getCraftingSpecialistCostPerMinute,
   getPickaxeCraftProgress,
   getPreviousMaterial,
   getReputationGain,
   getSellPrice,
   isItemUnlocked,
+  formatNumber,
 } from '../utils/gameLogic';
 
 interface CraftingPanelProps {
@@ -18,7 +21,10 @@ interface CraftingPanelProps {
   modifiers: GameModifiers;
   onCraft: (itemId: string) => void;
   onUnlockMaterial: (material: MaterialKey) => void;
+  onToggleSpecialist: (itemId: string) => void;
 }
+
+const CRAFTING_CATEGORIES: CraftableCategory[] = ['tools', 'melee', 'ranged', 'armor', 'accessories'];
 
 const RESOURCE_LABELS: Record<ResourceKey, string> = {
   ...MATERIAL_LABELS,
@@ -37,17 +43,42 @@ function formatRequirements(item: (typeof CRAFTABLE_ITEMS)[number]): string {
   return [...resourceParts, ...gemParts].join(' / ');
 }
 
-export function CraftingPanel({ state, modifiers, onCraft, onUnlockMaterial }: CraftingPanelProps) {
+export function CraftingPanel({
+  state,
+  modifiers,
+  onCraft,
+  onUnlockMaterial,
+  onToggleSpecialist,
+}: CraftingPanelProps) {
+  const [activeCategory, setActiveCategory] = useState<CraftableCategory>('tools');
+  const visibleItems = CRAFTABLE_ITEMS.filter((item) => item.category === activeCategory);
+
   return (
     <section className="panel crafting-panel" aria-labelledby="crafting-heading">
       <h2 id="crafting-heading">Crafting Bench</h2>
       <p className="panel-subtitle">Forge pickaxes to unlock tiers, then sell weapons and armor for profit.</p>
+      <div className="craft-tabs" role="tablist" aria-label="Crafting categories">
+        {CRAFTING_CATEGORIES.map((category) => (
+          <button
+            key={category}
+            type="button"
+            role="tab"
+            className={`craft-tab ${activeCategory === category ? 'craft-tab--active' : ''}`}
+            aria-selected={activeCategory === category}
+            onClick={() => setActiveCategory(category)}
+          >
+            {CRAFTABLE_CATEGORY_LABELS[category]}
+          </button>
+        ))}
+      </div>
       <div className="card-grid">
-        {CRAFTABLE_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const unlocked = isItemUnlocked(item, state);
           const affordable = canAffordCraftable(state, item);
           const sellPrice = getSellPrice(item, modifiers);
           const repGain = getReputationGain(item, modifiers);
+          const specialistActive = !!state.activeCraftingSpecialists[item.id];
+          const specialistCost = getCraftingSpecialistCostPerMinute(item, modifiers);
           const progress = getCraftableProgressInfo(item, state);
           const percent = Math.round(progress.ratio * 100);
           const pickaxeProgress = item.pickaxeMaterial
@@ -65,6 +96,17 @@ export function CraftingPanel({ state, modifiers, onCraft, onUnlockMaterial }: C
               key={item.id}
               className={`craft-card craft-card--${item.rarity} ${unlocked ? '' : 'craft-card--locked'}`}
             >
+              <button
+                type="button"
+                className={`specialist-toggle ${specialistActive ? 'specialist-toggle--active' : ''}`}
+                disabled={!unlocked}
+                onClick={() => onToggleSpecialist(item.id)}
+                aria-pressed={specialistActive}
+                aria-label={`${specialistActive ? 'Fire' : 'Hire'} ${item.name} crafting specialist`}
+                title={`${specialistActive ? 'Fire' : 'Hire'} specialist`}
+              >
+                <span>{specialistActive ? 'On' : 'Hire'}</span>
+              </button>
               <div className="craft-card__header">
                 <span className="craft-card__emoji" aria-hidden="true">{item.emoji}</span>
                 <div>
@@ -76,6 +118,7 @@ export function CraftingPanel({ state, modifiers, onCraft, onUnlockMaterial }: C
               <div className="craft-card__meta">
                 <span>Cost: {formatRequirements(item)}</span>
                 <span>Sells: {sellPrice} coins / +{repGain} rep</span>
+                <span>Specialist: {formatNumber(specialistCost)} coins/min</span>
                 {pickaxeProgress && (
                   <span>
                     Crafted: {pickaxeProgress.current} / {pickaxeProgress.required}
