@@ -168,6 +168,10 @@ function App() {
                   </div>
 
                   <aside className="side-column">
+                    <UpgradePanel state={state} onBuy={buyUpgrade} />
+                    <AchievementsPanel state={state} />
+                    <StatsPanel state={state} modifiers={modifiers} />
+
                     <section className="panel online-panel" aria-labelledby="online-heading">
                       <h2 id="online-heading">Online Score</h2>
                       <p className="panel-subtitle">
@@ -187,10 +191,6 @@ function App() {
                         </Link>
                       </div>
                     </section>
-
-                    <UpgradePanel state={state} onBuy={buyUpgrade} />
-                    <AchievementsPanel state={state} />
-                    <StatsPanel state={state} modifiers={modifiers} />
                   </aside>
                 </main>
               </>
