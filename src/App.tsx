@@ -123,7 +123,7 @@ function App() {
                 className="secondary-btn"
                 onClick={() => setShowAuth(true)}
               >
-                {isConfigured ? 'Sign In' : 'Guest Mode'}
+                Login / Register
               </button>
             )
           )}
