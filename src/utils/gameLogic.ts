@@ -17,7 +17,7 @@ import {
   SPECIALIST_MATERIALS,
 } from '../types/game';
 import { UPGRADES_BY_ID } from '../data/upgrades';
-import { CRAFTABLE_ITEMS, ITEMS_BY_ID, PICKAXE_ITEM_BY_MATERIAL } from '../data/items';
+import { CRAFTABLE_ITEMS, PICKAXE_ITEM_BY_MATERIAL } from '../data/items';
 
 export interface ProgressInfo {
   current: number;
@@ -64,6 +64,10 @@ export function getPickaxeItemId(material: MaterialKey): string {
 
 export function getCraftedPickaxeCount(state: GameState, material: MaterialKey): number {
   return state.craftedCounts[getPickaxeItemId(material)] ?? 0;
+}
+
+export function getPickaxeInventoryCount(state: GameState, material: MaterialKey): number {
+  return state.inventory[getPickaxeItemId(material)] ?? 0;
 }
 
 export function getUpgradeCost(upgradeId: string, currentLevel: number): number {
@@ -114,21 +118,43 @@ export function hasMinerSpecialist(state: GameState, material: MaterialKey): boo
 }
 
 export function isMaterialUnlocked(state: GameState, material: MaterialKey): boolean {
-  const materialIndex = MATERIAL_ORDER.indexOf(material);
-  if (materialIndex <= 0) return true;
-
-  const previousMaterial = MATERIAL_ORDER[materialIndex - 1];
-  if (!hasPickaxeCraftRequirement(state, previousMaterial)) return false;
-
-  if (isSpecialistMaterial(material)) {
-    return hasMinerSpecialist(state, material);
-  }
-
-  return true;
+  return material === 'wood' || (state.materialUnlocks[material] ?? false);
 }
 
 export function canManuallyAcquireMaterial(state: GameState, material: MaterialKey): boolean {
   return !isSpecialistMaterial(material) && isMaterialUnlocked(state, material);
+}
+
+export function getPreviousMaterial(material: MaterialKey): MaterialKey | null {
+  const materialIndex = MATERIAL_ORDER.indexOf(material);
+  return materialIndex > 0 ? MATERIAL_ORDER[materialIndex - 1] : null;
+}
+
+export function getMaterialUnlockProgress(state: GameState, material: MaterialKey): ProgressInfo | null {
+  const previousMaterial = getPreviousMaterial(material);
+  if (!previousMaterial) return null;
+
+  const current = getPickaxeInventoryCount(state, previousMaterial);
+  return {
+    current,
+    required: 100,
+    ratio: Math.min(1, current / 100),
+    label: `${MATERIAL_LABELS[previousMaterial]} Pickaxes required`,
+  };
+}
+
+export function canUnlockMaterial(state: GameState, material: MaterialKey): boolean {
+  if (isMaterialUnlocked(state, material)) return false;
+
+  const previousMaterial = getPreviousMaterial(material);
+  if (!previousMaterial) return false;
+  if (getPickaxeInventoryCount(state, previousMaterial) < 100) return false;
+
+  if (isSpecialistMaterial(material) && !hasMinerSpecialist(state, material)) {
+    return false;
+  }
+
+  return true;
 }
 
 export function computeModifiers(state: GameState): GameModifiers {
@@ -139,7 +165,6 @@ export function computeModifiers(state: GameState): GameModifiers {
   const toolLevel = levels['stronger-tools'] ?? 0;
   const bellows = levels['master-bellows'] ?? 0;
   const furnace = levels['hotter-furnace'] ?? 0;
-  const cart = levels['trade-cart'] ?? 0;
   const banner = levels['guild-banner'] ?? 0;
   const automationSpeed = 1 + bellows * 0.18;
 
@@ -164,13 +189,16 @@ export function computeModifiers(state: GameState): GameModifiers {
     gatherPerClick,
     materialPerSecond,
     sellMultiplier: 1 + furnace * 0.12,
-    autoSellRate: cart * automationSpeed,
     automationSpeed,
     reputationMultiplier: 1 + banner * 0.15,
   };
 }
 
 export function isItemUnlocked(item: CraftableItem, state: GameState): boolean {
+  if (item.pickaxeMaterial) {
+    return isMaterialUnlocked(state, item.pickaxeMaterial);
+  }
+
   return meetsUnlockRequirement(item.unlockRequirement, state);
 }
 
@@ -188,6 +216,9 @@ export function meetsUnlockRequirement(req: UnlockRequirement, state: GameState)
     req.pickaxeCraft !== undefined &&
     !hasPickaxeCraftRequirement(state, req.pickaxeCraft.material, req.pickaxeCraft.count)
   ) {
+    return false;
+  }
+  if (req.materialUnlocked !== undefined && !isMaterialUnlocked(state, req.materialUnlocked)) {
     return false;
   }
   return true;
@@ -219,6 +250,38 @@ export function getResourceReadiness(
 
   if (ratios.length === 0) return 1;
   return Math.min(1, Math.max(0, Math.min(...ratios)));
+}
+
+function getGemReadiness(state: GameState, item: CraftableItem): number {
+  const ratios = Object.entries(item.requiredGems ?? {})
+    .filter(([, amount]) => (amount ?? 0) > 0)
+    .map(([gem, amount]) => (state.gemInventory[gem as GemKey] ?? 0) / (amount ?? 1));
+
+  if (ratios.length === 0) return 1;
+  return Math.min(1, Math.max(0, Math.min(...ratios)));
+}
+
+export function canAffordCraftable(state: GameState, item: CraftableItem): boolean {
+  if (!canAffordResources(state.resources, item.requiredResources)) return false;
+
+  for (const [gem, amount] of Object.entries(item.requiredGems ?? {}) as Array<[GemKey, number]>) {
+    if ((state.gemInventory[gem] ?? 0) < amount) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function deductGems(
+  gems: GameState['gemInventory'],
+  required: CraftableItem['requiredGems'],
+): GameState['gemInventory'] {
+  const next = { ...gems };
+  for (const [gem, amount] of Object.entries(required ?? {}) as Array<[GemKey, number]>) {
+    next[gem] = Math.max(0, next[gem] - amount);
+  }
+  return next;
 }
 
 export function getCraftProgressRatio(progress?: CraftProgress): number {
@@ -262,7 +325,10 @@ export function getCraftableProgressInfo(
     };
   }
 
-  const readiness = getResourceReadiness(state.resources, item.requiredResources);
+  const readiness = Math.min(
+    getResourceReadiness(state.resources, item.requiredResources),
+    getGemReadiness(state, item),
+  );
   return {
     current: readiness,
     required: 1,
@@ -347,9 +413,9 @@ function getNextPickaxeUnlockTarget(state: GameState, material: MaterialKey): Pr
   const materialIndex = MATERIAL_ORDER.indexOf(material);
   const nextMaterial = MATERIAL_ORDER[materialIndex + 1];
   if (!nextMaterial) return null;
+  if (isMaterialUnlocked(state, nextMaterial)) return null;
 
-  const current = getCraftedPickaxeCount(state, material);
-  if (current >= 100) return null;
+  const current = getPickaxeInventoryCount(state, material);
 
   return {
     current,
@@ -405,24 +471,6 @@ export function getTotalProductionPerSecond(modifiers: GameModifiers): number {
   return Object.values(modifiers.materialPerSecond).reduce((sum, value) => sum + value, 0);
 }
 
-export function findBestItemToAutoSell(state: GameState, modifiers: GameModifiers): string | null {
-  let bestId: string | null = null;
-  let bestValue = -1;
-
-  for (const [itemId, count] of Object.entries(state.inventory)) {
-    if (count <= 0) continue;
-    const item = ITEMS_BY_ID[itemId];
-    if (!item) continue;
-    const value = getSellPrice(item, modifiers);
-    if (value > bestValue) {
-      bestValue = value;
-      bestId = itemId;
-    }
-  }
-
-  return bestId;
-}
-
 export function canPurchaseUpgrade(state: GameState, upgradeId: string): boolean {
   const upgrade = UPGRADES_BY_ID[upgradeId];
   if (!upgrade) return false;
@@ -451,6 +499,9 @@ export function formatUnlockRequirement(req: UnlockRequirement): string {
     const upgrade = UPGRADES_BY_ID[req.upgradeId];
     parts.push(upgrade ? upgrade.name : req.upgradeId);
   }
+  if (req.materialUnlocked !== undefined) {
+    parts.push(`${MATERIAL_LABELS[req.materialUnlocked]} unlocked`);
+  }
   return parts.length > 0 ? parts.join(' / ') : 'Available from the start';
 }
 
@@ -461,5 +512,15 @@ export function getPickaxeCraftProgress(state: GameState, material: MaterialKey)
     required: 100,
     ratio: Math.min(1, getCraftedPickaxeCount(state, material) / 100),
     label: pickaxe ? `${pickaxe.name} crafted` : `${MATERIAL_LABELS[material]} Pickaxes crafted`,
+  };
+}
+
+export function getPickaxeInventoryProgress(state: GameState, material: MaterialKey): ProgressInfo {
+  const pickaxe = PICKAXE_ITEM_BY_MATERIAL[material];
+  return {
+    current: getPickaxeInventoryCount(state, material),
+    required: 100,
+    ratio: Math.min(1, getPickaxeInventoryCount(state, material) / 100),
+    label: pickaxe ? `${pickaxe.name} in stock` : `${MATERIAL_LABELS[material]} Pickaxes in stock`,
   };
 }

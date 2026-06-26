@@ -18,6 +18,8 @@ export type ResourceKey = MaterialKey | EconomyResourceKey;
 
 export type Resources = Record<ResourceKey, number>;
 
+export type MaterialUnlocks = Record<MaterialKey, boolean>;
+
 export const MATERIAL_LABELS: Record<MaterialKey, string> = {
   wood: 'Wood',
   stone: 'Stone',
@@ -68,6 +70,7 @@ export interface UnlockRequirement {
   reputation?: number;
   upgradeId?: string;
   pickaxeCraft?: PickaxeCraftRequirement;
+  materialUnlocked?: MaterialKey;
 }
 
 export interface CraftableItem {
@@ -75,6 +78,7 @@ export interface CraftableItem {
   name: string;
   description: string;
   requiredResources: Partial<Resources>;
+  requiredGems?: Partial<GemInventory>;
   requiredCraftTimeMs?: number;
   coinValue: number;
   reputationGain: number;
@@ -88,7 +92,6 @@ export type UpgradeEffectType =
   | 'materialPerClick'
   | 'sellMultiplier'
   | 'materialPerSecond'
-  | 'autoSell'
   | 'automationSpeed'
   | 'reputationMultiplier'
   | 'minerSpecialist'
@@ -147,6 +150,7 @@ export interface TreasureHunterState {
 
 export interface GameState {
   resources: Resources;
+  materialUnlocks: MaterialUnlocks;
   gemInventory: GemInventory;
   treasureHunter: TreasureHunterState;
   inventory: Record<string, number>;
@@ -175,7 +179,6 @@ export interface GameModifiers {
   gatherPerClick: Record<MaterialKey, number>;
   materialPerSecond: Record<MaterialKey, number>;
   sellMultiplier: number;
-  autoSellRate: number;
   automationSpeed: number;
   reputationMultiplier: number;
 }
@@ -192,6 +195,18 @@ export const INITIAL_RESOURCES: Resources = {
   mithril: 0,
   coins: 25,
   reputation: 0,
+};
+
+export const INITIAL_MATERIAL_UNLOCKS: MaterialUnlocks = {
+  wood: true,
+  stone: false,
+  copper: false,
+  iron: false,
+  gold: false,
+  emerald: false,
+  diamond: false,
+  ruby: false,
+  mithril: false,
 };
 
 export const INITIAL_GEM_INVENTORY: GemInventory = {
@@ -223,6 +238,7 @@ export const INITIAL_BLACKSMITH_EXPERTS: BlacksmithExpert[] = [
 export function createInitialState(): GameState {
   return {
     resources: { ...INITIAL_RESOURCES },
+    materialUnlocks: { ...INITIAL_MATERIAL_UNLOCKS },
     gemInventory: { ...INITIAL_GEM_INVENTORY },
     treasureHunter: {
       unlocked: false,

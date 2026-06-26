@@ -26,8 +26,8 @@ function App() {
     floatingTexts,
     gatherMaterial,
     craftItem,
+    unlockMaterial,
     sellItem,
-    sellAll,
     buyUpgrade,
     sendTreasureHunter,
     resetGame,
@@ -158,12 +158,16 @@ function App() {
                       onGatherMaterial={gatherMaterial}
                     />
                     <TreasureHunterPanel state={state} onSend={sendTreasureHunter} />
-                    <CraftingPanel state={state} modifiers={modifiers} onCraft={craftItem} />
+                    <CraftingPanel
+                      state={state}
+                      modifiers={modifiers}
+                      onCraft={craftItem}
+                      onUnlockMaterial={unlockMaterial}
+                    />
                     <InventoryPanel
                       state={state}
                       modifiers={modifiers}
                       onSell={sellItem}
-                      onSellAll={sellAll}
                     />
                   </div>
 

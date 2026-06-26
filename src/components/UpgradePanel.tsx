@@ -27,8 +27,6 @@ function getEffectDescription(upgradeId: string, level: number): string {
       return upgrade.materialKey
         ? `${(level * upgrade.effectPerLevel).toFixed(1)} ${MATERIAL_LABELS[upgrade.materialKey].toLowerCase()}/s`
         : `${(level * upgrade.effectPerLevel).toFixed(1)} material/s`;
-    case 'autoSell':
-      return `${level} auto-sale/s (scaled)`;
     case 'automationSpeed':
       return `+${Math.round(level * upgrade.effectPerLevel * 100)}% automation speed`;
     case 'reputationMultiplier':

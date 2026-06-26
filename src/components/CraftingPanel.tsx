@@ -1,11 +1,13 @@
 import { CRAFTABLE_ITEMS } from '../data/items';
-import type { GameModifiers, GameState, ResourceKey } from '../types/game';
-import { MATERIAL_LABELS } from '../types/game';
+import type { GameModifiers, GameState, MaterialKey, ResourceKey } from '../types/game';
+import { GEM_LABELS, MATERIAL_LABELS } from '../types/game';
 import {
-  canAffordResources,
+  canAffordCraftable,
+  canUnlockMaterial,
   formatUnlockRequirement,
   getCraftableProgressInfo,
   getPickaxeCraftProgress,
+  getPreviousMaterial,
   getReputationGain,
   getSellPrice,
   isItemUnlocked,
@@ -15,6 +17,7 @@ interface CraftingPanelProps {
   state: GameState;
   modifiers: GameModifiers;
   onCraft: (itemId: string) => void;
+  onUnlockMaterial: (material: MaterialKey) => void;
 }
 
 const RESOURCE_LABELS: Record<ResourceKey, string> = {
@@ -23,22 +26,26 @@ const RESOURCE_LABELS: Record<ResourceKey, string> = {
   reputation: 'reputation',
 };
 
-function formatRequirements(required: Partial<Record<ResourceKey, number>>): string {
-  const parts = Object.entries(required)
+function formatRequirements(item: (typeof CRAFTABLE_ITEMS)[number]): string {
+  const resourceParts = Object.entries(item.requiredResources)
     .filter(([, amount]) => (amount ?? 0) > 0)
     .map(([key, amount]) => `${amount} ${RESOURCE_LABELS[key as ResourceKey].toLowerCase()}`);
-  return parts.join(' / ');
+  const gemParts = Object.entries(item.requiredGems ?? {})
+    .filter(([, amount]) => (amount ?? 0) > 0)
+    .map(([key, amount]) => `${amount} ${GEM_LABELS[key as keyof typeof GEM_LABELS]}`);
+
+  return [...resourceParts, ...gemParts].join(' / ');
 }
 
-export function CraftingPanel({ state, modifiers, onCraft }: CraftingPanelProps) {
+export function CraftingPanel({ state, modifiers, onCraft, onUnlockMaterial }: CraftingPanelProps) {
   return (
     <section className="panel crafting-panel" aria-labelledby="crafting-heading">
       <h2 id="crafting-heading">Crafting Bench</h2>
-      <p className="panel-subtitle">Hammer raw materials into sellable masterpieces.</p>
+      <p className="panel-subtitle">Forge pickaxes to unlock tiers, then sell weapons and armor for profit.</p>
       <div className="card-grid">
         {CRAFTABLE_ITEMS.map((item) => {
           const unlocked = isItemUnlocked(item, state);
-          const affordable = canAffordResources(state.resources, item.requiredResources);
+          const affordable = canAffordCraftable(state, item);
           const sellPrice = getSellPrice(item, modifiers);
           const repGain = getReputationGain(item, modifiers);
           const progress = getCraftableProgressInfo(item, state);
@@ -46,6 +53,12 @@ export function CraftingPanel({ state, modifiers, onCraft }: CraftingPanelProps)
           const pickaxeProgress = item.pickaxeMaterial
             ? getPickaxeCraftProgress(state, item.pickaxeMaterial)
             : null;
+          const previousMaterial = item.pickaxeMaterial ? getPreviousMaterial(item.pickaxeMaterial) : null;
+          const previousPickaxeCount = previousMaterial
+            ? state.inventory[`${previousMaterial}-pickaxe`] ?? 0
+            : 0;
+          const unlockablePickaxe = !!item.pickaxeMaterial && !unlocked && previousMaterial;
+          const canUnlock = item.pickaxeMaterial ? canUnlockMaterial(state, item.pickaxeMaterial) : false;
 
           return (
             <article
@@ -61,7 +74,7 @@ export function CraftingPanel({ state, modifiers, onCraft }: CraftingPanelProps)
               </div>
               <p className="craft-card__desc">{item.description}</p>
               <div className="craft-card__meta">
-                <span>Cost: {formatRequirements(item.requiredResources)}</span>
+                <span>Cost: {formatRequirements(item)}</span>
                 <span>Sells: {sellPrice} coins / +{repGain} rep</span>
                 {pickaxeProgress && (
                   <span>
@@ -78,7 +91,20 @@ export function CraftingPanel({ state, modifiers, onCraft }: CraftingPanelProps)
                   <span className="progress-fill" style={{ width: `${percent}%` }} />
                 </div>
               </div>
-              {!unlocked ? (
+              {unlockablePickaxe ? (
+                <button
+                  type="button"
+                  className="craft-btn craft-btn--unlock"
+                  disabled={!canUnlock}
+                  onClick={() => item.pickaxeMaterial && onUnlockMaterial(item.pickaxeMaterial)}
+                  aria-label={`Unlock ${item.name}`}
+                >
+                  <span>Unlock</span>
+                  <small>
+                    {Math.min(previousPickaxeCount, 100)} / 100 {MATERIAL_LABELS[previousMaterial]} Pickaxes
+                  </small>
+                </button>
+              ) : !unlocked ? (
                 <p className="craft-card__lock">Locked: {formatUnlockRequirement(item.unlockRequirement)}</p>
               ) : (
                 <button

@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { ITEMS_BY_ID } from '../data/items';
 import { UPGRADES_BY_ID } from '../data/upgrades';
 import type { FloatingTextItem, GameState, GemKey, MaterialKey, ToastMessage } from '../types/game';
 import { GEM_LABELS, GEM_ORDER, MATERIAL_LABELS, createInitialState } from '../types/game';
 import {
-  canAffordResources,
+  canAffordCraftable,
   canManuallyAcquireMaterial,
   canPurchaseUpgrade,
+  canUnlockMaterial,
   computeModifiers,
+  deductGems,
   deductResources,
-  findBestItemToAutoSell,
+  getPreviousMaterial,
   getReputationGain,
   getSellPrice,
   getTreasureHunterStats,
@@ -27,7 +29,6 @@ export function useGame() {
   const [state, setState] = useState<GameState>(() => loadGame() ?? createInitialState());
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [floatingTexts, setFloatingTexts] = useState<FloatingTextItem[]>([]);
-  const autoSellAccumulator = useRef(0);
 
   const addToast = useCallback((text: string, type: ToastMessage['type'] = 'success') => {
     const id = ++toastId;
@@ -91,7 +92,7 @@ export function useGame() {
 
     setState((prev) => {
       if (!isItemUnlocked(item, prev)) return prev;
-      if (!canAffordResources(prev.resources, item.requiredResources)) return prev;
+      if (!canAffordCraftable(prev, item)) return prev;
 
       const inventory = { ...prev.inventory };
       inventory[itemId] = (inventory[itemId] ?? 0) + 1;
@@ -104,6 +105,7 @@ export function useGame() {
       const next: GameState = {
         ...prev,
         resources: deductResources(prev.resources, item.requiredResources),
+        gemInventory: deductGems(prev.gemInventory, item.requiredGems),
         inventory,
         craftedCounts,
         stats: {
@@ -113,6 +115,32 @@ export function useGame() {
       };
 
       addToast(`Forged ${item.name}!`, 'success');
+      return checkAchievements(next);
+    });
+  }, [addToast, checkAchievements]);
+
+  const unlockMaterial = useCallback((material: MaterialKey) => {
+    setState((prev) => {
+      if (!canUnlockMaterial(prev, material)) return prev;
+
+      const previousMaterial = getPreviousMaterial(material);
+      if (!previousMaterial) return prev;
+
+      const previousPickaxeId = `${previousMaterial}-pickaxe`;
+      const inventory = { ...prev.inventory };
+      inventory[previousPickaxeId] = (inventory[previousPickaxeId] ?? 0) - 100;
+      if (inventory[previousPickaxeId] <= 0) delete inventory[previousPickaxeId];
+
+      const next: GameState = {
+        ...prev,
+        inventory,
+        materialUnlocks: {
+          ...prev.materialUnlocks,
+          [material]: true,
+        },
+      };
+
+      addToast(`${MATERIAL_LABELS[material]} tier unlocked!`, 'info');
       return checkAchievements(next);
     });
   }, [addToast, checkAchievements]);
@@ -153,43 +181,6 @@ export function useGame() {
     });
   }, [addToast, checkAchievements]);
 
-  const sellAll = useCallback(() => {
-    setState((prev) => {
-      const modifiers = computeModifiers(prev);
-      const entries = Object.entries(prev.inventory).filter(([, count]) => count > 0);
-      if (entries.length === 0) return prev;
-
-      let coinsGained = 0;
-      let repGained = 0;
-      let soldCount = 0;
-
-      for (const [itemId, count] of entries) {
-        const item = ITEMS_BY_ID[itemId];
-        if (!item) continue;
-        coinsGained += getSellPrice(item, modifiers) * count;
-        repGained += getReputationGain(item, modifiers) * count;
-        soldCount += count;
-      }
-
-      const next: GameState = {
-        ...prev,
-        resources: {
-          ...prev.resources,
-          coins: prev.resources.coins + coinsGained,
-          reputation: prev.resources.reputation + repGained,
-        },
-        inventory: {},
-        stats: {
-          ...prev.stats,
-          totalCoinsEarned: prev.stats.totalCoinsEarned + coinsGained,
-        },
-      };
-
-      addToast(`Sold ${soldCount} items for ${coinsGained} coins!`, 'success');
-      return checkAchievements(next);
-    });
-  }, [addToast, checkAchievements]);
-
   const buyUpgrade = useCallback((upgradeId: string) => {
     const upgrade = UPGRADES_BY_ID[upgradeId];
     if (!upgrade) return;
@@ -223,7 +214,7 @@ export function useGame() {
           ? `${upgrade.name} hired - ${MATERIAL_LABELS[upgrade.materialKey]} automation online!`
           : upgrade.effectType === 'treasureHunter'
             ? `${upgrade.name} level ${level + 1} ready for gem expeditions!`
-          : `${upgrade.name} upgraded to level ${level + 1}!`;
+            : `${upgrade.name} upgraded to level ${level + 1}!`;
 
       addToast(message, 'info');
       return checkAchievements(next);
@@ -326,40 +317,6 @@ export function useGame() {
           }
         }
 
-        if (modifiers.autoSellRate > 0) {
-          autoSellAccumulator.current += modifiers.autoSellRate / 10;
-          if (autoSellAccumulator.current >= 1) {
-            const itemId = findBestItemToAutoSell(next, modifiers);
-            if (itemId) {
-              const item = ITEMS_BY_ID[itemId];
-              const count = next.inventory[itemId] ?? 0;
-              if (item && count > 0) {
-                const coinsGained = getSellPrice(item, modifiers);
-                const repGained = getReputationGain(item, modifiers);
-                const inventory = { ...next.inventory };
-                inventory[itemId] = count - 1;
-                if (inventory[itemId] <= 0) delete inventory[itemId];
-
-                next = {
-                  ...next,
-                  resources: {
-                    ...next.resources,
-                    coins: next.resources.coins + coinsGained,
-                    reputation: next.resources.reputation + repGained,
-                  },
-                  inventory,
-                  stats: {
-                    ...next.stats,
-                    totalCoinsEarned: next.stats.totalCoinsEarned + coinsGained,
-                  },
-                };
-                autoSellAccumulator.current -= 1;
-                changed = true;
-              }
-            }
-          }
-        }
-
         return changed ? checkAchievements(next) : prev;
       });
     }, 100);
@@ -376,8 +333,8 @@ export function useGame() {
     floatingTexts,
     gatherMaterial,
     craftItem,
+    unlockMaterial,
     sellItem,
-    sellAll,
     buyUpgrade,
     sendTreasureHunter,
     resetGame,

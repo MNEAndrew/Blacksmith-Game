@@ -471,9 +471,21 @@ body {
   color: #fff;
 }
 
+.craft-btn--unlock {
+  display: grid;
+  gap: 0.15rem;
+  place-items: center;
+}
+
+.craft-btn--unlock small {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .craft-btn:hover:not(:disabled),
 .upgrade-btn:hover:not(:disabled),
-.sell-btn:hover {
+.sell-btn:hover:not(:disabled) {
   filter: brightness(1.1);
   transform: translateY(-1px);
 }
@@ -484,7 +496,8 @@ body {
 }
 
 .craft-btn:disabled,
-.upgrade-btn:disabled {
+.upgrade-btn:disabled,
+.sell-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   background: #444;
@@ -530,6 +543,8 @@ body {
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .inventory-row__price {
@@ -543,6 +558,13 @@ body {
   background: linear-gradient(180deg, #3a7a3a 0%, #2d5a2d 100%);
   color: #fff;
   font-size: 0.8rem;
+}
+
+.inventory-row__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
 }
 
 .secondary-btn {

@@ -91,16 +91,6 @@ export const UPGRADES: Upgrade[] = [
     },
   },
   {
-    id: 'trade-cart',
-    name: 'Trade Cart',
-    description: 'Automatically delivers crafted goods to market.',
-    baseCost: 550,
-    costMultiplier: 2.4,
-    effectType: 'autoSell',
-    effectPerLevel: 1,
-    maxLevel: 5,
-  },
-  {
     id: 'treasure-hunter',
     name: 'Treasure Hunter',
     description: 'Unlocks gem expeditions. Each expedition slot costs 10 Gold and can return crude, mediocre, polished, or precious gems.',

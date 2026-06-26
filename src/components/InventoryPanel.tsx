@@ -5,11 +5,12 @@ import { getSellPrice } from '../utils/gameLogic';
 interface InventoryPanelProps {
   state: GameState;
   modifiers: GameModifiers;
-  onSell: (itemId: string) => void;
-  onSellAll: () => void;
+  onSell: (itemId: string, quantity: number) => void;
 }
 
-export function InventoryPanel({ state, modifiers, onSell, onSellAll }: InventoryPanelProps) {
+const SELL_AMOUNTS = [1, 10, 100] as const;
+
+export function InventoryPanel({ state, modifiers, onSell }: InventoryPanelProps) {
   const entries = Object.entries(state.inventory).filter(([, count]) => count > 0);
 
   return (
@@ -17,13 +18,8 @@ export function InventoryPanel({ state, modifiers, onSell, onSellAll }: Inventor
       <div className="panel-header-row">
         <div>
           <h2 id="inventory-heading">Inventory</h2>
-          <p className="panel-subtitle">Sell crafted goods at the market stall.</p>
+          <p className="panel-subtitle">Sell crafted pickaxes, weapons, and shields at the market stall.</p>
         </div>
-        {entries.length > 0 && (
-          <button type="button" className="secondary-btn" onClick={onSellAll}>
-            Sell All
-          </button>
-        )}
       </div>
 
       {entries.length === 0 ? (
@@ -41,19 +37,33 @@ export function InventoryPanel({ state, modifiers, onSell, onSellAll }: Inventor
                   <span className="inventory-row__emoji" aria-hidden="true">{item.emoji}</span>
                   <div>
                     <strong>{item.name}</strong>
-                    <span className="inventory-row__count">×{count}</span>
+                    <span className="inventory-row__count">x{count}</span>
                   </div>
                 </div>
                 <div className="inventory-row__actions">
-                  <span className="inventory-row__price">{price} 🪙 each</span>
-                  <button
-                    type="button"
-                    className="sell-btn"
-                    onClick={() => onSell(itemId)}
-                    aria-label={`Sell one ${item.name}`}
-                  >
-                    Sell 1
-                  </button>
+                  <span className="inventory-row__price">{price} coins each</span>
+                  <div className="inventory-row__buttons">
+                    {SELL_AMOUNTS.map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        className="sell-btn"
+                        onClick={() => onSell(itemId, amount)}
+                        disabled={count < amount}
+                        aria-label={`Sell ${amount} ${item.name}`}
+                      >
+                        Sell {amount}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="sell-btn"
+                      onClick={() => onSell(itemId, count)}
+                      aria-label={`Sell all ${item.name}`}
+                    >
+                      Sell All
+                    </button>
+                  </div>
                 </div>
               </div>
             );

@@ -5,7 +5,9 @@ import {
   GEM_ORDER,
   INITIAL_BLACKSMITH_EXPERTS,
   INITIAL_GEM_INVENTORY,
+  INITIAL_MATERIAL_UNLOCKS,
   INITIAL_RESOURCES,
+  MATERIAL_ORDER,
   createInitialState,
 } from '../types/game';
 
@@ -89,6 +91,7 @@ function normalizeGameState(value: unknown): GameState {
   const base = createInitialState();
   const raw = asRecord(value);
   const resources = asRecord(raw.resources);
+  const materialUnlocks = asRecord(raw.materialUnlocks);
   const gemInventory = asRecord(raw.gemInventory);
   const treasureHunter = asRecord(raw.treasureHunter);
   const stats = asRecord(raw.stats);
@@ -97,6 +100,12 @@ function normalizeGameState(value: unknown): GameState {
   const upgradeLevels = asRecord(raw.upgradeLevels);
   const achievementsUnlocked = asRecord(raw.achievementsUnlocked);
   const normalizedResources = { ...INITIAL_RESOURCES };
+  const normalizedCraftedCounts = Object.fromEntries(
+    Object.entries(craftedCounts)
+      .filter(([itemId, count]) => ITEMS_BY_ID[itemId] && safeInteger(count) > 0)
+      .map(([itemId, count]) => [itemId, safeInteger(count)]),
+  );
+  const normalizedMaterialUnlocks = { ...INITIAL_MATERIAL_UNLOCKS };
 
   for (const key of Object.keys(INITIAL_RESOURCES) as ResourceKey[]) {
     normalizedResources[key] = typeof resources[key] === 'number' && Number.isFinite(resources[key])
@@ -112,8 +121,23 @@ function normalizeGameState(value: unknown): GameState {
     normalizedResources.emerald += Math.max(0, resources.gems);
   }
 
+  for (const material of MATERIAL_ORDER) {
+    if (typeof materialUnlocks[material] === 'boolean') {
+      normalizedMaterialUnlocks[material] = materialUnlocks[material];
+    }
+  }
+
+  for (let index = 1; index < MATERIAL_ORDER.length; index += 1) {
+    const material = MATERIAL_ORDER[index];
+    const previousMaterial = MATERIAL_ORDER[index - 1];
+    if ((normalizedCraftedCounts[`${previousMaterial}-pickaxe`] ?? 0) >= 100) {
+      normalizedMaterialUnlocks[material] = true;
+    }
+  }
+
   return {
     resources: normalizedResources,
+    materialUnlocks: normalizedMaterialUnlocks,
     gemInventory: {
       ...INITIAL_GEM_INVENTORY,
       ...Object.fromEntries(
@@ -131,11 +155,7 @@ function normalizeGameState(value: unknown): GameState {
         .filter(([itemId, count]) => ITEMS_BY_ID[itemId] && safeInteger(count) > 0)
         .map(([itemId, count]) => [itemId, safeInteger(count)]),
     ),
-    craftedCounts: Object.fromEntries(
-      Object.entries(craftedCounts)
-        .filter(([itemId, count]) => ITEMS_BY_ID[itemId] && safeInteger(count) > 0)
-        .map(([itemId, count]) => [itemId, safeInteger(count)]),
-    ),
+    craftedCounts: normalizedCraftedCounts,
     upgradeLevels: Object.fromEntries(
       Object.entries(upgradeLevels)
         .filter(([upgradeId, level]) => UPGRADES_BY_ID[upgradeId] && safeInteger(level) > 0)
