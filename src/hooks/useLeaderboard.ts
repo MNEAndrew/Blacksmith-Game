@@ -4,7 +4,7 @@ import { fetchLeaderboard } from '../utils/leaderboard';
 
 const REFRESH_INTERVAL_MS = 30_000;
 
-export function useLeaderboard(enabled: boolean, currentUserId?: string | null) {
+export function useLeaderboard(enabled: boolean, currentUserId?: string | null, limit = 25) {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -13,11 +13,11 @@ export function useLeaderboard(enabled: boolean, currentUserId?: string | null) 
     if (!enabled) return;
 
     setLoading(true);
-    const { data, error: fetchError } = await fetchLeaderboard(25);
+    const { data, error: fetchError } = await fetchLeaderboard(limit);
     setEntries(data as LeaderboardEntry[]);
     setError(fetchError);
     setLoading(false);
-  }, [enabled]);
+  }, [enabled, limit]);
 
   useEffect(() => {
     if (!enabled) {

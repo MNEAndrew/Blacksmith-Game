@@ -98,6 +98,32 @@ body {
   flex-wrap: wrap;
 }
 
+.game-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border-metal);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.game-nav__link {
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.88rem;
+  transition: color 0.2s, background 0.2s;
+}
+
+.game-nav__link:hover,
+.game-nav__link--active {
+  color: var(--ember-glow);
+  background: rgba(255, 140, 50, 0.1);
+}
+
 .tagline {
   margin: 0.15rem 0 0;
   color: var(--text-muted);
@@ -609,6 +635,21 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Online score */
+
+.online-panel__actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+.online-panel__actions .secondary-btn,
+.online-panel__leaderboard-link {
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+}
+
 /* Footer */
 
 .game-footer {
@@ -884,6 +925,54 @@ body {
 
 /* Leaderboard */
 
+.leaderboard-page {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.leaderboard-page__hero {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  padding: 2rem 1rem 1.25rem;
+  text-align: center;
+}
+
+.leaderboard-page__eyebrow {
+  margin: 0;
+  color: var(--gold);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+}
+
+.leaderboard-page__hero h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 4rem);
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.leaderboard-page__hero p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.leaderboard-page__back {
+  width: auto;
+  margin-top: 0.6rem;
+  text-decoration: none;
+}
+
+.leaderboard-panel--full {
+  margin-bottom: 1rem;
+}
+
+.leaderboard-panel--full .panel-header-row {
+  align-items: center;
+}
+
 .leaderboard-actions {
   display: flex;
   flex-wrap: wrap;
@@ -947,6 +1036,64 @@ body {
   white-space: nowrap;
 }
 
+.leaderboard-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-metal);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.leaderboard-table th,
+.leaderboard-table td {
+  padding: 0.85rem 0.9rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(61, 53, 68, 0.75);
+}
+
+.leaderboard-table th {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.leaderboard-table td {
+  color: var(--text-primary);
+  font-weight: 650;
+}
+
+.leaderboard-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.leaderboard-table .leaderboard-row--you td {
+  background: rgba(244, 197, 66, 0.08);
+}
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-metal);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.rank-badge--top {
+  border-color: var(--gold);
+  color: #211505;
+  background: linear-gradient(180deg, #ffe18a 0%, var(--gold) 100%);
+}
+
 /* Responsive */
 
 @media (max-width: 900px) {
@@ -960,6 +1107,10 @@ body {
 
   .upgrade-panel .card-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .game-header {
+    align-items: flex-start;
   }
 }
 
@@ -997,5 +1148,60 @@ body {
 
   .leaderboard-actions .secondary-btn {
     flex: 1;
+  }
+
+  .game-nav {
+    order: 3;
+    width: 100%;
+  }
+
+  .game-nav__link {
+    flex: 1;
+    text-align: center;
+  }
+
+  .leaderboard-page__hero {
+    padding: 1.25rem 0 1rem;
+  }
+
+  .leaderboard-table {
+    min-width: 0;
+  }
+
+  .leaderboard-table thead {
+    display: none;
+  }
+
+  .leaderboard-table,
+  .leaderboard-table tbody,
+  .leaderboard-table tr,
+  .leaderboard-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .leaderboard-table tr {
+    padding: 0.85rem;
+    border-bottom: 1px solid var(--border-metal);
+  }
+
+  .leaderboard-table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .leaderboard-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    border-bottom: 0;
+    text-align: right;
+  }
+
+  .leaderboard-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-weight: 700;
+    text-align: left;
   }
 }
