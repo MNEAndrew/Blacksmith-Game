@@ -9,6 +9,7 @@ export function useLeaderboardSync(
   gameState: GameState,
   userId: string | null,
   onSyncError?: (message: string) => void,
+  onSyncSuccess?: (syncedAt: string) => void,
 ) {
   const lastSyncRef = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -23,11 +24,13 @@ export function useLeaderboardSync(
     if (error) {
       onSyncError?.(error);
     } else {
-      lastSyncRef.current = Date.now();
+      const syncedAt = new Date().toISOString();
+      lastSyncRef.current = Date.parse(syncedAt);
+      onSyncSuccess?.(syncedAt);
     }
 
     return { error };
-  }, [userId, onSyncError]);
+  }, [userId, onSyncError, onSyncSuccess]);
 
   useEffect(() => {
     if (!userId) return;

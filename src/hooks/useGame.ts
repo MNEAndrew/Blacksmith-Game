@@ -3,15 +3,13 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { ITEMS_BY_ID } from '../data/items';
 import { UPGRADES_BY_ID } from '../data/upgrades';
 import type { FloatingTextItem, GameState, GemKey, MaterialKey, ToastMessage } from '../types/game';
-import { GEM_LABELS, GEM_ORDER, MATERIAL_LABELS, createInitialState } from '../types/game';
+import { GEM_LABELS, GEM_ORDER, MATERIAL_LABELS, createEmptyMaterialTotals, createInitialState } from '../types/game';
 import {
   canAffordCraftable,
   canManuallyAcquireMaterial,
   canPurchaseUpgrade,
   canUnlockMaterial,
   computeModifiers,
-  deductGems,
-  deductResources,
   getCraftingSpecialistCostPerMinute,
   getCraftingSpecialistCraftKey,
   getPreviousMaterial,
@@ -21,6 +19,7 @@ import {
   getUpgradeCost,
   getUpgradeLevel,
   isItemUnlocked,
+  recordCraftedItem,
 } from '../utils/gameLogic';
 import { clearSave, loadGame, saveGame } from '../utils/saveGame';
 
@@ -78,7 +77,15 @@ export function useGame() {
           ...prev.resources,
           [material]: prev.resources[material] + gained,
         },
-        stats: { ...prev.stats, totalClicks: prev.stats.totalClicks + 1 },
+        stats: {
+          ...prev.stats,
+          totalClicks: prev.stats.totalClicks + 1,
+          resourcesGainedManual: {
+            ...createEmptyMaterialTotals(),
+            ...prev.stats.resourcesGainedManual,
+            [material]: (prev.stats.resourcesGainedManual[material] ?? 0) + gained,
+          },
+        },
       };
 
       if (event) {
@@ -94,28 +101,8 @@ export function useGame() {
     if (!item) return;
 
     setState((prev) => {
-      if (!isItemUnlocked(item, prev)) return prev;
-      if (!canAffordCraftable(prev, item)) return prev;
-
-      const inventory = { ...prev.inventory };
-      inventory[itemId] = (inventory[itemId] ?? 0) + 1;
-
-      const craftedCounts = {
-        ...prev.craftedCounts,
-        [itemId]: (prev.craftedCounts[itemId] ?? 0) + 1,
-      };
-
-      const next: GameState = {
-        ...prev,
-        resources: deductResources(prev.resources, item.requiredResources),
-        gemInventory: deductGems(prev.gemInventory, item.requiredGems),
-        inventory,
-        craftedCounts,
-        stats: {
-          ...prev.stats,
-          totalItemsCrafted: prev.stats.totalItemsCrafted + 1,
-        },
-      };
+      const next = recordCraftedItem(prev, item, 'manual');
+      if (!next) return prev;
 
       addToast(`Forged ${item.name}!`, 'success');
       return checkAchievements(next);
@@ -204,6 +191,8 @@ export function useGame() {
         stats: {
           ...prev.stats,
           totalCoinsEarned: prev.stats.totalCoinsEarned + coinsGained,
+          totalItemsSold: prev.stats.totalItemsSold + sellCount,
+          totalCoinsFromSelling: prev.stats.totalCoinsFromSelling + coinsGained,
         },
       };
 
@@ -237,6 +226,7 @@ export function useGame() {
         stats: {
           ...prev.stats,
           totalUpgradesPurchased: prev.stats.totalUpgradesPurchased + 1,
+          coinsSpentOnUpgrades: prev.stats.coinsSpentOnUpgrades + cost,
         },
       };
 
@@ -287,8 +277,10 @@ export function useGame() {
       }
 
       const gemInventory = { ...prev.gemInventory };
+      let gemsFound = 0;
       for (const [gem, amount] of Object.entries(found) as Array<[GemKey, number]>) {
         gemInventory[gem] += amount;
+        gemsFound += amount;
       }
 
       const summary = Object.entries(found)
@@ -309,9 +301,24 @@ export function useGame() {
           gold: prev.resources.gold - stats.expeditionCost,
         },
         gemInventory,
+        stats: {
+          ...prev.stats,
+          totalGemsPolished: prev.stats.totalGemsPolished + gemsFound,
+        },
       };
     });
   }, [addToast]);
+
+  const recordLeaderboardSync = useCallback((syncedAt = new Date().toISOString()) => {
+    setState((prev) => ({
+      ...prev,
+      stats: {
+        ...prev.stats,
+        bestSyncedReputation: Math.max(prev.stats.bestSyncedReputation, prev.resources.reputation),
+        lastSyncedAt: syncedAt,
+      },
+    }));
+  }, []);
 
   const resetGame = useCallback(() => {
     clearSave();
@@ -334,18 +341,42 @@ export function useGame() {
         const modifiers = computeModifiers(prev);
         let next = prev;
         let changed = false;
+        const automationGains = createEmptyMaterialTotals();
+        let totalProductionPerSecond = 0;
 
         for (const [material, perSecond] of Object.entries(modifiers.materialPerSecond) as Array<[MaterialKey, number]>) {
           if (perSecond > 0) {
+            const gained = perSecond / 10;
             next = {
               ...next,
               resources: {
                 ...next.resources,
-                [material]: next.resources[material] + perSecond / 10,
+                [material]: next.resources[material] + gained,
               },
             };
+            automationGains[material] += gained;
+            totalProductionPerSecond += perSecond;
             changed = true;
           }
+        }
+
+        if (totalProductionPerSecond > 0) {
+          const resourcesGainedAuto = {
+            ...createEmptyMaterialTotals(),
+            ...next.stats.resourcesGainedAuto,
+          };
+          for (const material of Object.keys(automationGains) as MaterialKey[]) {
+            resourcesGainedAuto[material] += automationGains[material];
+          }
+
+          next = {
+            ...next,
+            stats: {
+              ...next.stats,
+              resourcesGainedAuto,
+              bestProductionPerSecond: Math.max(next.stats.bestProductionPerSecond, totalProductionPerSecond),
+            },
+          };
         }
 
         const activeSpecialistItems = Object.keys(next.activeCraftingSpecialists)
@@ -399,7 +430,7 @@ export function useGame() {
                       itemId: item.id,
                       elapsedMs: 0,
                       requiredMs: item.requiredCraftTimeMs ?? 1_000,
-                      source: 'expert',
+                      source: 'auto',
                       expertId: craftKey,
                     },
                   },
@@ -415,24 +446,7 @@ export function useGame() {
                 delete activeCrafts[craftKey];
 
                 if (canAffordCraftable(next, item)) {
-                  next = {
-                    ...next,
-                    resources: deductResources(next.resources, item.requiredResources),
-                    gemInventory: deductGems(next.gemInventory, item.requiredGems),
-                    activeCrafts,
-                    inventory: {
-                      ...next.inventory,
-                      [item.id]: (next.inventory[item.id] ?? 0) + 1,
-                    },
-                    craftedCounts: {
-                      ...next.craftedCounts,
-                      [item.id]: (next.craftedCounts[item.id] ?? 0) + 1,
-                    },
-                    stats: {
-                      ...next.stats,
-                      totalItemsCrafted: next.stats.totalItemsCrafted + 1,
-                    },
-                  };
+                  next = recordCraftedItem({ ...next, activeCrafts }, item, 'auto') ?? { ...next, activeCrafts };
                 } else {
                   next = {
                     ...next,
@@ -476,6 +490,7 @@ export function useGame() {
     sellItem,
     buyUpgrade,
     sendTreasureHunter,
+    recordLeaderboardSync,
     resetGame,
     addToast,
   };

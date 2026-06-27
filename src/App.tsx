@@ -31,6 +31,7 @@ function App() {
     sellItem,
     buyUpgrade,
     sendTreasureHunter,
+    recordLeaderboardSync,
     resetGame,
     addToast,
   } = useGame();
@@ -57,7 +58,7 @@ function App() {
     [addToast],
   );
 
-  const { syncNow } = useLeaderboardSync(state, user?.id ?? null, handleSyncError);
+  const { syncNow } = useLeaderboardSync(state, user?.id ?? null, handleSyncError, recordLeaderboardSync);
 
   const handleReset = useCallback(() => {
     resetGame();
@@ -215,7 +216,15 @@ function App() {
           />
           <Route
             path="/stats"
-            element={<StatsPage state={state} modifiers={modifiers} />}
+            element={(
+              <StatsPage
+                state={state}
+                modifiers={modifiers}
+                currentUserId={user?.id ?? null}
+                loggedIn={!!user}
+                leaderboardEnabled={isConfigured}
+              />
+            )}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

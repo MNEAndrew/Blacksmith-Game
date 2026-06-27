@@ -1,13 +1,17 @@
 import { ITEMS_BY_ID } from '../data/items';
 import { UPGRADES_BY_ID } from '../data/upgrades';
-import type { BlacksmithExpert, CraftProgress, GameState, ResourceKey } from '../types/game';
+import type { BlacksmithExpert, CraftProgress, CraftableCategory, GameState, Rarity, ResourceKey } from '../types/game';
 import {
+  CRAFTABLE_CATEGORY_LABELS,
   GEM_ORDER,
   INITIAL_BLACKSMITH_EXPERTS,
+  INITIAL_CATEGORY_COUNTS,
   INITIAL_GEM_INVENTORY,
   INITIAL_MATERIAL_UNLOCKS,
+  INITIAL_RARITY_COUNTS,
   INITIAL_RESOURCES,
   MATERIAL_ORDER,
+  createEmptyMaterialTotals,
   createInitialState,
 } from '../types/game';
 
@@ -25,6 +29,11 @@ function safeNumber(value: unknown): number {
 
 function safeInteger(value: unknown): number {
   return Math.floor(safeNumber(value));
+}
+
+function safeDateString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return Number.isNaN(Date.parse(value)) ? null : value;
 }
 
 function normalizeExperts(value: unknown): BlacksmithExpert[] {
@@ -67,7 +76,7 @@ function normalizeActiveCrafts(value: unknown): Record<string, CraftProgress> {
     const itemId = typeof craft.itemId === 'string' && ITEMS_BY_ID[craft.itemId]
       ? craft.itemId
       : null;
-    const source = craft.source === 'expert' ? 'expert' : 'manual';
+    const source = craft.source === 'auto' || craft.source === 'expert' ? 'auto' : 'manual';
     const requiredMs = safeInteger(craft.requiredMs);
 
     if (!itemId || requiredMs <= 0) continue;
@@ -107,6 +116,47 @@ function normalizeGameState(value: unknown): GameState {
       .map(([itemId, count]) => [itemId, safeInteger(count)]),
   );
   const normalizedMaterialUnlocks = { ...INITIAL_MATERIAL_UNLOCKS };
+  const normalizedCraftedByItem = Object.fromEntries(
+    Object.entries(asRecord(stats.craftedByItem)).filter(([itemId, count]) =>
+      ITEMS_BY_ID[itemId] && safeInteger(count) > 0,
+    ).map(([itemId, count]) => [itemId, safeInteger(count)]),
+  );
+  const craftedByItem = Object.keys(normalizedCraftedByItem).length > 0
+    ? normalizedCraftedByItem
+    : normalizedCraftedCounts;
+  const craftedByRarity = { ...INITIAL_RARITY_COUNTS };
+  const craftedByCollection = { ...INITIAL_CATEGORY_COUNTS };
+  const savedCraftedByRarity = asRecord(stats.craftedByRarity);
+  const savedCraftedByCollection = asRecord(stats.craftedByCollection);
+  const resourcesGainedManual = createEmptyMaterialTotals();
+  const resourcesGainedAuto = createEmptyMaterialTotals();
+
+  for (const rarity of Object.keys(INITIAL_RARITY_COUNTS) as Rarity[]) {
+    craftedByRarity[rarity] = safeInteger(savedCraftedByRarity[rarity]);
+  }
+
+  for (const category of Object.keys(CRAFTABLE_CATEGORY_LABELS) as CraftableCategory[]) {
+    craftedByCollection[category] = safeInteger(savedCraftedByCollection[category]);
+  }
+
+  if (Object.values(craftedByRarity).every((count) => count === 0)) {
+    for (const [itemId, count] of Object.entries(craftedByItem)) {
+      const item = ITEMS_BY_ID[itemId];
+      if (item) craftedByRarity[item.rarity] += safeInteger(count);
+    }
+  }
+
+  if (Object.values(craftedByCollection).every((count) => count === 0)) {
+    for (const [itemId, count] of Object.entries(craftedByItem)) {
+      const item = ITEMS_BY_ID[itemId];
+      if (item) craftedByCollection[item.category] += safeInteger(count);
+    }
+  }
+
+  for (const material of MATERIAL_ORDER) {
+    resourcesGainedManual[material] = safeNumber(asRecord(stats.resourcesGainedManual)[material]);
+    resourcesGainedAuto[material] = safeNumber(asRecord(stats.resourcesGainedAuto)[material]);
+  }
 
   for (const key of Object.keys(INITIAL_RESOURCES) as ResourceKey[]) {
     normalizedResources[key] = typeof resources[key] === 'number' && Number.isFinite(resources[key])
@@ -171,6 +221,21 @@ function normalizeGameState(value: unknown): GameState {
       totalCoinsEarned: safeNumber(stats.totalCoinsEarned),
       totalUpgradesPurchased: safeInteger(stats.totalUpgradesPurchased),
       totalGemsPolished: safeInteger(stats.totalGemsPolished),
+      manualCrafts: safeInteger(stats.manualCrafts),
+      autoCrafts: safeInteger(stats.autoCrafts),
+      craftedByItem,
+      craftedByRarity,
+      craftedByCollection,
+      resourcesGainedManual,
+      resourcesGainedAuto,
+      coinsSpentOnUpgrades: safeNumber(stats.coinsSpentOnUpgrades),
+      totalItemsSold: safeInteger(stats.totalItemsSold),
+      totalCoinsFromSelling: safeNumber(stats.totalCoinsFromSelling),
+      firstPlayedAt: safeDateString(stats.firstPlayedAt) ?? new Date().toISOString(),
+      lastSavedAt: safeDateString(stats.lastSavedAt),
+      bestProductionPerSecond: safeNumber(stats.bestProductionPerSecond),
+      bestSyncedReputation: safeNumber(stats.bestSyncedReputation),
+      lastSyncedAt: safeDateString(stats.lastSyncedAt),
     },
     achievementsUnlocked: Object.fromEntries(
       Object.entries(achievementsUnlocked)
@@ -187,7 +252,14 @@ function normalizeGameState(value: unknown): GameState {
 
 export function saveGame(state: GameState): void {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(normalizeGameState(state)));
+    const normalized = normalizeGameState(state);
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      ...normalized,
+      stats: {
+        ...normalized.stats,
+        lastSavedAt: new Date().toISOString(),
+      },
+    }));
   } catch {
     // Storage can be unavailable in private windows or blocked browser contexts.
   }

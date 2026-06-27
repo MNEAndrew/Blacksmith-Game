@@ -1,6 +1,7 @@
 import type {
   BlacksmithExpert,
   CraftProgress,
+  CraftSource,
   CraftableItem,
   GameModifiers,
   GameState,
@@ -12,6 +13,8 @@ import type {
 } from '../types/game';
 import {
   GEM_ORDER,
+  INITIAL_CATEGORY_COUNTS,
+  INITIAL_RARITY_COUNTS,
   MATERIAL_LABELS,
   MATERIAL_ORDER,
   SPECIALIST_MATERIALS,
@@ -473,6 +476,56 @@ export function deductResources(
     next[resourceKey] = Math.max(0, next[resourceKey] - (amount ?? 0));
   }
   return next;
+}
+
+function safeStatNumber(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+export function recordCraftedItem(
+  state: GameState,
+  item: CraftableItem,
+  source: CraftSource,
+  consumeCost = true,
+): GameState | null {
+  if (!isItemUnlocked(item, state)) return null;
+  if (consumeCost && !canAffordCraftable(state, item)) return null;
+
+  const nextStats = {
+    ...state.stats,
+    totalItemsCrafted: safeStatNumber(state.stats.totalItemsCrafted) + 1,
+    manualCrafts: safeStatNumber(state.stats.manualCrafts) + (source === 'manual' ? 1 : 0),
+    autoCrafts: safeStatNumber(state.stats.autoCrafts) + (source === 'auto' ? 1 : 0),
+    craftedByItem: {
+      ...state.stats.craftedByItem,
+      [item.id]: safeStatNumber(state.stats.craftedByItem[item.id]) + 1,
+    },
+    craftedByRarity: {
+      ...INITIAL_RARITY_COUNTS,
+      ...state.stats.craftedByRarity,
+      [item.rarity]: safeStatNumber(state.stats.craftedByRarity[item.rarity]) + 1,
+    },
+    craftedByCollection: {
+      ...INITIAL_CATEGORY_COUNTS,
+      ...state.stats.craftedByCollection,
+      [item.category]: safeStatNumber(state.stats.craftedByCollection[item.category]) + 1,
+    },
+  };
+
+  return {
+    ...state,
+    resources: consumeCost ? deductResources(state.resources, item.requiredResources) : state.resources,
+    gemInventory: consumeCost ? deductGems(state.gemInventory, item.requiredGems) : state.gemInventory,
+    inventory: {
+      ...state.inventory,
+      [item.id]: safeStatNumber(state.inventory[item.id]) + 1,
+    },
+    craftedCounts: {
+      ...state.craftedCounts,
+      [item.id]: safeStatNumber(state.craftedCounts[item.id]) + 1,
+    },
+    stats: nextStats,
+  };
 }
 
 export function getSellPrice(item: CraftableItem, modifiers: GameModifiers): number {

@@ -62,6 +62,8 @@ export type Rarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'my
 
 export type CraftableCategory = 'tools' | 'melee' | 'ranged' | 'armor' | 'accessories';
 
+export type CraftSource = 'manual' | 'auto';
+
 export const CRAFTABLE_CATEGORY_LABELS: Record<CraftableCategory, string> = {
   tools: 'Tools',
   melee: 'Melee',
@@ -135,6 +137,21 @@ export interface GameStats {
   totalCoinsEarned: number;
   totalUpgradesPurchased: number;
   totalGemsPolished: number;
+  manualCrafts: number;
+  autoCrafts: number;
+  craftedByItem: Record<string, number>;
+  craftedByRarity: Record<Rarity, number>;
+  craftedByCollection: Record<CraftableCategory, number>;
+  resourcesGainedManual: Record<MaterialKey, number>;
+  resourcesGainedAuto: Record<MaterialKey, number>;
+  coinsSpentOnUpgrades: number;
+  totalItemsSold: number;
+  totalCoinsFromSelling: number;
+  firstPlayedAt: string;
+  lastSavedAt: string | null;
+  bestProductionPerSecond: number;
+  bestSyncedReputation: number;
+  lastSyncedAt: string | null;
 }
 
 export interface BlacksmithExpert {
@@ -150,7 +167,7 @@ export interface CraftProgress {
   itemId: string;
   elapsedMs: number;
   requiredMs: number;
-  source: 'manual' | 'expert';
+  source: CraftSource;
   expertId?: string;
 }
 
@@ -228,12 +245,48 @@ export const INITIAL_GEM_INVENTORY: GemInventory = {
   precious: 0,
 };
 
+export const INITIAL_RARITY_COUNTS: Record<Rarity, number> = {
+  common: 0,
+  uncommon: 0,
+  rare: 0,
+  epic: 0,
+  legendary: 0,
+  mythic: 0,
+};
+
+export const INITIAL_CATEGORY_COUNTS: Record<CraftableCategory, number> = {
+  tools: 0,
+  melee: 0,
+  ranged: 0,
+  armor: 0,
+  accessories: 0,
+};
+
+export function createEmptyMaterialTotals(): Record<MaterialKey, number> {
+  return Object.fromEntries(MATERIAL_ORDER.map((material) => [material, 0])) as Record<MaterialKey, number>;
+}
+
 export const INITIAL_STATS: GameStats = {
   totalClicks: 0,
   totalItemsCrafted: 0,
   totalCoinsEarned: 0,
   totalUpgradesPurchased: 0,
   totalGemsPolished: 0,
+  manualCrafts: 0,
+  autoCrafts: 0,
+  craftedByItem: {},
+  craftedByRarity: { ...INITIAL_RARITY_COUNTS },
+  craftedByCollection: { ...INITIAL_CATEGORY_COUNTS },
+  resourcesGainedManual: createEmptyMaterialTotals(),
+  resourcesGainedAuto: createEmptyMaterialTotals(),
+  coinsSpentOnUpgrades: 0,
+  totalItemsSold: 0,
+  totalCoinsFromSelling: 0,
+  firstPlayedAt: new Date().toISOString(),
+  lastSavedAt: null,
+  bestProductionPerSecond: 0,
+  bestSyncedReputation: 0,
+  lastSyncedAt: null,
 };
 
 export const INITIAL_BLACKSMITH_EXPERTS: BlacksmithExpert[] = [
@@ -259,7 +312,17 @@ export function createInitialState(): GameState {
     inventory: {},
     craftedCounts: {},
     upgradeLevels: {},
-    stats: { ...INITIAL_STATS },
+    stats: {
+      ...INITIAL_STATS,
+      craftedByItem: {},
+      craftedByRarity: { ...INITIAL_RARITY_COUNTS },
+      craftedByCollection: { ...INITIAL_CATEGORY_COUNTS },
+      resourcesGainedManual: createEmptyMaterialTotals(),
+      resourcesGainedAuto: createEmptyMaterialTotals(),
+      firstPlayedAt: new Date().toISOString(),
+      lastSavedAt: null,
+      lastSyncedAt: null,
+    },
     achievementsUnlocked: {},
     blacksmithExperts: INITIAL_BLACKSMITH_EXPERTS.map((expert) => ({ ...expert })),
     activeCraftingSpecialists: {},
