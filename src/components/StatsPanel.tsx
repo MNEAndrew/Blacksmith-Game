@@ -275,6 +275,7 @@ export function StatsPanel({
           <StatCard label="Current reputation" value={formatNumber(state.resources.reputation)} detail={rank.current.title} />
           <StatCard label="Best synced reputation" value={formatNumber(state.stats.bestSyncedReputation)} detail={state.stats.lastSyncedAt ? formatDate(state.stats.lastSyncedAt) : 'Not synced yet'} />
           <StatCard label="Current coins" value={formatNumber(state.resources.coins)} detail={`${formatNumber(state.stats.totalCoinsEarned)} earned all time`} />
+          <StatCard label="News events seen" value={formatNumber(state.stats.totalNewsEventsSeen)} detail={`${state.news.activeEvents.length} active now`} />
           <StatCard label="Total play time" value={formatDuration(playTime)} detail={`First played ${formatDate(state.stats.firstPlayedAt)}`} />
           <StatCard label="Last saved" value={formatDate(state.stats.lastSavedAt)} detail="Local browser save" />
           <StatCard label="Game stage" value={rank.current.title} detail={rank.next ? `Next: ${rank.next.title}` : 'Top rank reached'} />
@@ -342,10 +343,24 @@ export function StatsPanel({
             <StatCard label="Items sold" value={formatNumber(state.stats.totalItemsSold)} />
             <StatCard label="Coins from selling" value={formatNumber(state.stats.totalCoinsFromSelling)} />
             <StatCard label="Items in stock" value={formatNumber(getInventoryCount(state))} />
+            <StatCard label="Event bonus coins" value={formatNumber(state.stats.coinsGainedFromEventBonuses)} />
+            <StatCard label="Event bonus reputation" value={formatNumber(state.stats.reputationGainedFromEventBonuses)} />
           </div>
           <div className="ring-grid">
             <ProgressRing percent={upgradePercent} label="Upgrade completion" />
             <ProgressRing percent={rank.ratio * 100} label={rank.next ? `Next: ${rank.next.title}` : 'Max rank'} />
+          </div>
+        </section>
+
+        <section className="panel stats-section">
+          <h3>News Economy</h3>
+          <div className="stats-card-grid stats-card-grid--compact">
+            <StatCard label="Total news events seen" value={formatNumber(state.stats.totalNewsEventsSeen)} />
+            <StatCard label="Most impactful event" value={state.stats.mostImpactfulNewsEventHeadline ?? 'None yet'} />
+            <StatCard label="Time under positive modifiers" value={formatDuration(state.stats.timeUnderPositiveNewsMs)} />
+            <StatCard label="Time under negative modifiers" value={formatDuration(state.stats.timeUnderNegativeNewsMs)} />
+            <StatCard label="Coins gained from event bonuses" value={formatNumber(state.stats.coinsGainedFromEventBonuses)} />
+            <StatCard label="Reputation gained from event bonuses" value={formatNumber(state.stats.reputationGainedFromEventBonuses)} />
           </div>
         </section>
 

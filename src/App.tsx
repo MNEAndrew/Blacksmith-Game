@@ -3,9 +3,11 @@ import { BrowserRouter, Link, Navigate, NavLink, Route, Routes } from 'react-rou
 import { ActionPanel } from './components/ActionPanel';
 import { AchievementsPanel } from './components/AchievementsPanel';
 import { AuthPanel } from './components/AuthPanel';
+import { BreakingNewsModal } from './components/BreakingNewsModal';
 import { CraftingPanel } from './components/CraftingPanel';
 import { FloatingText } from './components/FloatingText';
 import { InventoryPanel } from './components/InventoryPanel';
+import { NewsPanel } from './components/NewsPanel';
 import { ResourceBar } from './components/ResourceBar';
 import { Toast } from './components/Toast';
 import { TreasureHunterPanel } from './components/TreasureHunterPanel';
@@ -33,6 +35,7 @@ function App() {
     sendTreasureHunter,
     recordLeaderboardSync,
     resetGame,
+    markBreakingNewsSeen,
     addToast,
   } = useGame();
 
@@ -59,6 +62,11 @@ function App() {
   );
 
   const { syncNow } = useLeaderboardSync(state, user?.id ?? null, handleSyncError, recordLeaderboardSync);
+  const unseenBreakingEvent = state.news.activeEvents.find((event) =>
+    event.isBreaking &&
+    !event.hasBeenSeen &&
+    !state.news.seenBreakingEventIds.includes(event.id),
+  ) ?? null;
 
   const handleReset = useCallback(() => {
     resetGame();
@@ -109,6 +117,9 @@ function App() {
           <nav className="game-nav" aria-label="Main navigation">
             <NavLink to="/" end className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
               Game
+            </NavLink>
+            <NavLink to="/news" className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
+              News
             </NavLink>
             <NavLink to="/leaderboard" className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
               Leaderboard
@@ -178,7 +189,7 @@ function App() {
                   </div>
 
                   <aside className="side-column">
-                    <UpgradePanel state={state} onBuy={buyUpgrade} />
+                    <UpgradePanel state={state} modifiers={modifiers} onBuy={buyUpgrade} />
                     <AchievementsPanel state={state} />
 
                     <section className="panel online-panel" aria-labelledby="online-heading">
@@ -203,6 +214,15 @@ function App() {
                   </aside>
                 </main>
               </>
+            )}
+          />
+          <Route
+            path="/news"
+            element={(
+              <NewsPanel
+                state={state}
+                modifiers={modifiers}
+              />
             )}
           />
           <Route
@@ -238,6 +258,7 @@ function App() {
 
         <Toast toasts={toasts} />
         <FloatingText items={floatingTexts} />
+        <BreakingNewsModal event={unseenBreakingEvent} onClose={markBreakingNewsSeen} />
 
         <AuthPanel
           open={showAuth}

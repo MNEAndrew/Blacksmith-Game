@@ -1,5 +1,5 @@
 import { UPGRADES } from '../data/upgrades';
-import type { GameState } from '../types/game';
+import type { GameModifiers, GameState } from '../types/game';
 import { MATERIAL_LABELS } from '../types/game';
 import {
   canPurchaseUpgrade,
@@ -11,6 +11,7 @@ import {
 
 interface UpgradePanelProps {
   state: GameState;
+  modifiers: GameModifiers;
   onBuy: (upgradeId: string) => void;
 }
 
@@ -42,7 +43,7 @@ function getEffectDescription(upgradeId: string, level: number): string {
   }
 }
 
-export function UpgradePanel({ state, onBuy }: UpgradePanelProps) {
+export function UpgradePanel({ state, modifiers, onBuy }: UpgradePanelProps) {
   return (
     <section className="panel upgrade-panel" aria-labelledby="upgrade-heading">
       <h2 id="upgrade-heading">Upgrade Shop</h2>
@@ -51,7 +52,7 @@ export function UpgradePanel({ state, onBuy }: UpgradePanelProps) {
         {UPGRADES.map((upgrade) => {
           const level = getUpgradeLevel(state, upgrade.id);
           const maxed = level >= upgrade.maxLevel;
-          const cost = getUpgradeCost(upgrade.id, level);
+          const cost = getUpgradeCost(upgrade.id, level, modifiers);
           const unlocked = !upgrade.unlockRequirement || meetsUnlockRequirement(upgrade.unlockRequirement, state);
           const canBuy = canPurchaseUpgrade(state, upgrade.id);
 
