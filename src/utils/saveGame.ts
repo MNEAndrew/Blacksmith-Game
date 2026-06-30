@@ -1,5 +1,20 @@
 import { ITEMS_BY_ID } from '../data/items';
+import { STOCK_COMPANY_DEFINITIONS } from '../data/stockCompanies';
 import { UPGRADES_BY_ID } from '../data/upgrades';
+import type {
+  ContractClientType,
+  ContractDifficulty,
+  ContractRequirement,
+  ContractRiskLevel,
+  ContractStatus,
+  ForgeContract,
+} from '../types/contracts';
+import {
+  CONTRACT_HISTORY_LIMIT,
+  INITIAL_CONTRACT_STATS,
+  INITIAL_CONTRACTS_STATE,
+  MAX_ACTIVE_CONTRACT_SLOTS,
+} from '../types/contracts';
 import type { BlacksmithExpert, CraftProgress, CraftableCategory, GameState, Rarity, ResourceKey } from '../types/game';
 import {
   CRAFTABLE_CATEGORY_LABELS,
@@ -16,6 +31,23 @@ import {
 } from '../types/game';
 import type { EventEffect, NewsEvent, NewsEventType, NewsSeverity } from '../types/news';
 import { INITIAL_NEWS_STATE } from '../types/news';
+import type {
+  StockCompany,
+  StockMarketStats,
+  StockNewsArticle,
+  StockNewsImpactType,
+  StockNewsSentiment,
+  StockPosition,
+  StockSector,
+  StockTransaction,
+} from '../types/stocks';
+import {
+  INITIAL_STOCK_MARKET_STATS,
+  STOCK_NEWS_HISTORY_LIMIT,
+  STOCK_PRICE_HISTORY_LIMIT,
+  STOCK_TRANSACTION_HISTORY_LIMIT,
+} from '../types/stocks';
+import { createInitialStockCompanies } from './stockSimulator';
 
 const SAVE_KEY = 'forge-rush-save-v1';
 
@@ -27,6 +59,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function safeNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function safeSignedNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 function safeInteger(value: unknown): number {
@@ -143,6 +179,321 @@ function normalizeNewsState(value: unknown): GameState['news'] {
       ? raw.lastNewsGeneratedAt
       : null,
     totalNewsEventsSeen: safeInteger(raw.totalNewsEventsSeen),
+  };
+}
+
+function normalizeContractRequirement(value: unknown): ContractRequirement | null {
+  const raw = asRecord(value);
+  if (typeof raw.itemId !== 'string' || !ITEMS_BY_ID[raw.itemId]) return null;
+  const quantity = safeInteger(raw.quantity);
+  if (quantity <= 0) return null;
+  return { itemId: raw.itemId, quantity };
+}
+
+function normalizeContract(value: unknown): ForgeContract | null {
+  const raw = asRecord(value);
+  const allowedClientTypes: ContractClientType[] = ['company', 'guild', 'kingdom', 'republic', 'merchant', 'military', 'research'];
+  const allowedDifficulties: ContractDifficulty[] = ['easy', 'medium', 'hard', 'legendary'];
+  const allowedStatuses: ContractStatus[] = ['available', 'active', 'completed', 'failed', 'expired'];
+  const allowedRiskLevels: ContractRiskLevel[] = ['low', 'moderate', 'high', 'severe'];
+  const requirements = Array.isArray(raw.requirements)
+    ? raw.requirements
+      .map(normalizeContractRequirement)
+      .filter((requirement): requirement is ContractRequirement => requirement !== null)
+    : [];
+
+  if (typeof raw.id !== 'string' || !raw.id.trim()) return null;
+  if (requirements.length === 0) return null;
+  if (!allowedClientTypes.includes(raw.clientType as ContractClientType)) return null;
+  if (!allowedDifficulties.includes(raw.difficulty as ContractDifficulty)) return null;
+  if (!allowedStatuses.includes(raw.status as ContractStatus)) return null;
+
+  const status = raw.status as ContractStatus;
+  const createdAt = safeNumber(raw.createdAt);
+  const offerExpiresAt = safeNumber(raw.offerExpiresAt);
+  const activeExpiresAt = typeof raw.activeExpiresAt === 'number' && Number.isFinite(raw.activeExpiresAt)
+    ? raw.activeExpiresAt
+    : null;
+
+  if (createdAt <= 0 || offerExpiresAt <= 0) return null;
+
+  return {
+    id: raw.id,
+    clientName: typeof raw.clientName === 'string' && raw.clientName.trim() ? raw.clientName : 'Unknown Client',
+    clientType: raw.clientType as ContractClientType,
+    title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : 'Forge Contract',
+    description: typeof raw.description === 'string' && raw.description.trim()
+      ? raw.description
+      : 'A timed forge delivery contract.',
+    requirements,
+    difficulty: raw.difficulty as ContractDifficulty,
+    rewardMultiplier: typeof raw.rewardMultiplier === 'number' && Number.isFinite(raw.rewardMultiplier)
+      ? Math.max(1, raw.rewardMultiplier)
+      : 2,
+    rewardCoins: safeInteger(raw.rewardCoins),
+    reputationReward: safeInteger(raw.reputationReward),
+    failureCoinPenalty: safeInteger(raw.failureCoinPenalty),
+    failureReputationPenalty: safeInteger(raw.failureReputationPenalty),
+    offerExpiresAt,
+    activeExpiresAt,
+    status,
+    createdAt,
+    acceptedAt: typeof raw.acceptedAt === 'number' && Number.isFinite(raw.acceptedAt) ? raw.acceptedAt : null,
+    completedAt: typeof raw.completedAt === 'number' && Number.isFinite(raw.completedAt) ? raw.completedAt : null,
+    flavorText: typeof raw.flavorText === 'string' && raw.flavorText.trim() ? raw.flavorText : 'The posting is freshly inked.',
+    riskLevel: allowedRiskLevels.includes(raw.riskLevel as ContractRiskLevel)
+      ? raw.riskLevel as ContractRiskLevel
+      : 'moderate',
+    categoryHint: typeof raw.categoryHint === 'string' && Object.keys(CRAFTABLE_CATEGORY_LABELS).includes(raw.categoryHint)
+      ? raw.categoryHint as CraftableCategory
+      : undefined,
+    rarityHint: typeof raw.rarityHint === 'string' && Object.keys(INITIAL_RARITY_COUNTS).includes(raw.rarityHint)
+      ? raw.rarityHint as Rarity
+      : undefined,
+    completedWithSecondsRemaining: typeof raw.completedWithSecondsRemaining === 'number' && Number.isFinite(raw.completedWithSecondsRemaining)
+      ? Math.max(0, Math.floor(raw.completedWithSecondsRemaining))
+      : undefined,
+  };
+}
+
+function normalizeContractsState(value: unknown): GameState['contracts'] {
+  const raw = asRecord(value);
+  const stats = asRecord(raw.contractStats);
+  const slotCount = Math.min(
+    MAX_ACTIVE_CONTRACT_SLOTS,
+    Math.max(1, safeInteger(raw.unlockedContractSlots) || safeInteger(raw.activeContractSlots) || 1),
+  );
+
+  return {
+    availableContracts: Array.isArray(raw.availableContracts)
+      ? raw.availableContracts
+        .map(normalizeContract)
+        .filter((contract): contract is ForgeContract => contract !== null && contract.status === 'available')
+        .slice(0, 5)
+      : [...INITIAL_CONTRACTS_STATE.availableContracts],
+    activeContracts: Array.isArray(raw.activeContracts)
+      ? raw.activeContracts
+        .map(normalizeContract)
+        .filter((contract): contract is ForgeContract => contract !== null && contract.status === 'active')
+        .slice(0, MAX_ACTIVE_CONTRACT_SLOTS)
+      : [...INITIAL_CONTRACTS_STATE.activeContracts],
+    contractHistory: Array.isArray(raw.contractHistory)
+      ? raw.contractHistory
+        .map(normalizeContract)
+        .filter((contract): contract is ForgeContract =>
+          contract !== null && ['completed', 'failed', 'expired'].includes(contract.status),
+        )
+        .sort((a, b) => (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt))
+        .slice(0, CONTRACT_HISTORY_LIMIT)
+      : [...INITIAL_CONTRACTS_STATE.contractHistory],
+    lastContractGeneratedAt: typeof raw.lastContractGeneratedAt === 'number' && Number.isFinite(raw.lastContractGeneratedAt)
+      ? raw.lastContractGeneratedAt
+      : null,
+    activeContractSlots: slotCount,
+    maxActiveContractSlots: MAX_ACTIVE_CONTRACT_SLOTS,
+    unlockedContractSlots: slotCount,
+    contractStats: {
+      completed: safeInteger(stats.completed),
+      failed: safeInteger(stats.failed),
+      expired: safeInteger(stats.expired),
+      coinsEarned: safeNumber(stats.coinsEarned),
+      reputationEarned: safeNumber(stats.reputationEarned),
+      reputationLost: safeNumber(stats.reputationLost),
+      penaltiesPaid: safeNumber(stats.penaltiesPaid),
+      largestReward: safeNumber(stats.largestReward),
+      worstPenalty: safeNumber(stats.worstPenalty),
+      slotsUnlocked: Math.max(1, safeInteger(stats.slotsUnlocked) || slotCount || INITIAL_CONTRACT_STATS.slotsUnlocked),
+      legendaryCompleted: safeInteger(stats.legendaryCompleted),
+      deadlineSurvivorCompletions: safeInteger(stats.deadlineSurvivorCompletions),
+      currentCompletionStreak: safeInteger(stats.currentCompletionStreak),
+      bestCompletionStreak: safeInteger(stats.bestCompletionStreak),
+    },
+  };
+}
+
+function normalizeStockCompany(value: unknown, fallback: StockCompany): StockCompany {
+  const raw = asRecord(value);
+  const currentPrice = typeof raw.currentPrice === 'number' && Number.isFinite(raw.currentPrice)
+    ? Math.max(1, raw.currentPrice)
+    : fallback.currentPrice;
+  const previousPrice = typeof raw.previousPrice === 'number' && Number.isFinite(raw.previousPrice)
+    ? Math.max(1, raw.previousPrice)
+    : fallback.previousPrice;
+  const priceHistory = Array.isArray(raw.priceHistory)
+    ? raw.priceHistory
+      .filter((price): price is number => typeof price === 'number' && Number.isFinite(price) && price >= 1)
+      .slice(-STOCK_PRICE_HISTORY_LIMIT)
+    : fallback.priceHistory;
+
+  return {
+    ...fallback,
+    currentPrice,
+    previousPrice,
+    priceHistory: priceHistory.length > 0 ? priceHistory : fallback.priceHistory,
+    volatility: typeof raw.volatility === 'number' && Number.isFinite(raw.volatility) && raw.volatility > 0
+      ? raw.volatility
+      : fallback.volatility,
+    trendBias: typeof raw.trendBias === 'number' && Number.isFinite(raw.trendBias)
+      ? raw.trendBias
+      : fallback.trendBias,
+    dividendYield: typeof raw.dividendYield === 'number' && Number.isFinite(raw.dividendYield)
+      ? Math.max(0, raw.dividendYield)
+      : fallback.dividendYield,
+    lastUpdatedAt: typeof raw.lastUpdatedAt === 'number' && Number.isFinite(raw.lastUpdatedAt)
+      ? raw.lastUpdatedAt
+      : fallback.lastUpdatedAt,
+  };
+}
+
+function normalizeStockNews(value: unknown): StockNewsArticle | null {
+  const raw = asRecord(value);
+  const sentiments: StockNewsSentiment[] = ['positive', 'negative', 'neutral'];
+  const impactTypes: StockNewsImpactType[] = ['single_stock', 'sector', 'multi_stock', 'market_wide'];
+  const sectors = STOCK_COMPANY_DEFINITIONS.map((company) => company.sector);
+
+  if (typeof raw.id !== 'string' || !raw.id.trim()) return null;
+  if (!sentiments.includes(raw.sentiment as StockNewsSentiment)) return null;
+  if (!impactTypes.includes(raw.impactType as StockNewsImpactType)) return null;
+
+  const createdAt = safeNumber(raw.createdAt);
+  const expiresAt = safeNumber(raw.expiresAt);
+  if (createdAt <= 0 || expiresAt <= 0 || expiresAt <= createdAt) return null;
+
+  return {
+    id: raw.id,
+    headline: typeof raw.headline === 'string' && raw.headline.trim() ? raw.headline : 'Market bulletin',
+    source: typeof raw.source === 'string' && raw.source.trim() ? raw.source : 'Forge Exchange Wire',
+    body: typeof raw.body === 'string' && raw.body.trim() ? raw.body : 'Market desks are still sorting the details.',
+    summary: typeof raw.summary === 'string' && raw.summary.trim() ? raw.summary : 'A fictional market event is affecting prices.',
+    sentiment: raw.sentiment as StockNewsSentiment,
+    impactType: raw.impactType as StockNewsImpactType,
+    affectedTickers: Array.isArray(raw.affectedTickers)
+      ? raw.affectedTickers.filter((ticker): ticker is string =>
+        typeof ticker === 'string' && STOCK_COMPANY_DEFINITIONS.some((company) => company.ticker === ticker),
+      )
+      : [],
+    affectedSectors: Array.isArray(raw.affectedSectors)
+      ? raw.affectedSectors.filter((sector): sector is StockSector =>
+        typeof sector === 'string' && sectors.includes(sector as StockSector),
+      )
+      : [],
+    priceImpactPercent: safeSignedNumber(raw.priceImpactPercent),
+    volatilityImpact: safeNumber(raw.volatilityImpact),
+    durationSeconds: Math.max(1, safeInteger(raw.durationSeconds)),
+    createdAt,
+    expiresAt,
+    isBreaking: raw.isBreaking === true,
+    hasBeenSeen: raw.hasBeenSeen === true,
+  };
+}
+
+function normalizeStockPosition(value: unknown): StockPosition | null {
+  const raw = asRecord(value);
+  if (typeof raw.ticker !== 'string') return null;
+  if (!STOCK_COMPANY_DEFINITIONS.some((company) => company.ticker === raw.ticker)) return null;
+  const shares = safeInteger(raw.shares);
+  if (shares <= 0) return null;
+
+  return {
+    ticker: raw.ticker,
+    shares,
+    averagePurchasePrice: safeNumber(raw.averagePurchasePrice),
+  };
+}
+
+function normalizeStockTransaction(value: unknown): StockTransaction | null {
+  const raw = asRecord(value);
+  if (typeof raw.id !== 'string' || !raw.id.trim()) return null;
+  if (raw.type !== 'buy' && raw.type !== 'sell') return null;
+  if (typeof raw.ticker !== 'string' || !STOCK_COMPANY_DEFINITIONS.some((company) => company.ticker === raw.ticker)) return null;
+
+  return {
+    id: raw.id,
+    ticker: raw.ticker,
+    type: raw.type,
+    shares: safeInteger(raw.shares),
+    price: safeNumber(raw.price),
+    total: safeNumber(raw.total),
+    profitLoss: typeof raw.profitLoss === 'number' && Number.isFinite(raw.profitLoss) ? raw.profitLoss : undefined,
+    createdAt: safeNumber(raw.createdAt),
+    newsSentimentAtTrade: raw.newsSentimentAtTrade === 'positive' || raw.newsSentimentAtTrade === 'negative' || raw.newsSentimentAtTrade === 'neutral'
+      ? raw.newsSentimentAtTrade
+      : null,
+  };
+}
+
+function normalizeStockMarketStats(value: unknown): StockMarketStats {
+  const raw = asRecord(value);
+  return {
+    ...INITIAL_STOCK_MARKET_STATS,
+    totalBuys: safeInteger(raw.totalBuys),
+    totalSells: safeInteger(raw.totalSells),
+    realizedProfitLoss: safeSignedNumber(raw.realizedProfitLoss),
+    dividendsEarned: safeNumber(raw.dividendsEarned),
+    bestTrade: typeof raw.bestTrade === 'number' && Number.isFinite(raw.bestTrade) ? raw.bestTrade : null,
+    worstTrade: typeof raw.worstTrade === 'number' && Number.isFinite(raw.worstTrade) ? raw.worstTrade : null,
+    marketNewsSeen: safeInteger(raw.marketNewsSeen),
+    totalSharesBought: safeInteger(raw.totalSharesBought),
+    totalSharesSold: safeInteger(raw.totalSharesSold),
+    coinsLostFromNegativeMarketEvents: safeNumber(raw.coinsLostFromNegativeMarketEvents),
+    coinsGainedFromPositiveMarketEvents: safeNumber(raw.coinsGainedFromPositiveMarketEvents),
+    panicSells: safeInteger(raw.panicSells),
+    bullishBuys: safeInteger(raw.bullishBuys),
+    disasterProfits: safeInteger(raw.disasterProfits),
+  };
+}
+
+function normalizeStockMarketState(value: unknown): GameState['stockMarket'] {
+  const raw = asRecord(value);
+  const now = Date.now();
+  const savedCompanies = Array.isArray(raw.companies) ? raw.companies.map(asRecord) : [];
+  const fallbackCompanies = createInitialStockCompanies(now);
+  const companies = fallbackCompanies.map((fallback) => {
+    const saved = savedCompanies.find((company) => company.ticker === fallback.ticker);
+    return normalizeStockCompany(saved, fallback);
+  });
+  const activeStockNews = Array.isArray(raw.activeStockNews)
+    ? raw.activeStockNews
+      .map(normalizeStockNews)
+      .filter((article): article is StockNewsArticle => article !== null && article.expiresAt > now)
+    : [];
+  const expiredActiveNews = Array.isArray(raw.activeStockNews)
+    ? raw.activeStockNews
+      .map(normalizeStockNews)
+      .filter((article): article is StockNewsArticle => article !== null && article.expiresAt <= now)
+    : [];
+  const savedNewsHistory = Array.isArray(raw.stockNewsHistory)
+    ? raw.stockNewsHistory
+      .map(normalizeStockNews)
+      .filter((article): article is StockNewsArticle => article !== null)
+    : [];
+  const portfolioEntries = Object.entries(asRecord(raw.portfolio))
+    .map(([, position]) => normalizeStockPosition(position))
+    .filter((position): position is StockPosition => position !== null);
+
+  return {
+    companies,
+    portfolio: Object.fromEntries(portfolioEntries.map((position) => [position.ticker, position])),
+    transactions: Array.isArray(raw.transactions)
+      ? raw.transactions
+        .map(normalizeStockTransaction)
+        .filter((transaction): transaction is StockTransaction => transaction !== null)
+        .slice(-STOCK_TRANSACTION_HISTORY_LIMIT)
+      : [],
+    stockNewsHistory: [...expiredActiveNews, ...savedNewsHistory]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, STOCK_NEWS_HISTORY_LIMIT),
+    activeStockNews,
+    seenStockNewsIds: Array.isArray(raw.seenStockNewsIds)
+      ? raw.seenStockNewsIds.filter((id): id is string => typeof id === 'string')
+      : [],
+    lastStockUpdateAt: typeof raw.lastStockUpdateAt === 'number' && Number.isFinite(raw.lastStockUpdateAt)
+      ? raw.lastStockUpdateAt
+      : now,
+    lastStockNewsGeneratedAt: typeof raw.lastStockNewsGeneratedAt === 'number' && Number.isFinite(raw.lastStockNewsGeneratedAt)
+      ? raw.lastStockNewsGeneratedAt
+      : null,
+    marketStats: normalizeStockMarketStats(raw.marketStats),
   };
 }
 
@@ -364,6 +715,8 @@ function normalizeGameState(value: unknown): GameState {
     ) as Record<string, boolean>,
     activeCrafts: normalizeActiveCrafts(raw.activeCrafts),
     news: normalizeNewsState(raw.news),
+    contracts: normalizeContractsState(raw.contracts),
+    stockMarket: normalizeStockMarketState(raw.stockMarket),
   };
 }
 

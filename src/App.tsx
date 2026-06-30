@@ -5,10 +5,13 @@ import { AchievementsPanel } from './components/AchievementsPanel';
 import { AuthPanel } from './components/AuthPanel';
 import { BreakingNewsModal } from './components/BreakingNewsModal';
 import { CraftingPanel } from './components/CraftingPanel';
+import { ContractsPage } from './components/ContractsPage';
 import { FloatingText } from './components/FloatingText';
 import { InventoryPanel } from './components/InventoryPanel';
+import { MarketBreakingNewsModal } from './components/MarketBreakingNewsModal';
 import { NewsPanel } from './components/NewsPanel';
 import { ResourceBar } from './components/ResourceBar';
+import { StockMarketPage } from './components/StockMarketPage';
 import { Toast } from './components/Toast';
 import { TreasureHunterPanel } from './components/TreasureHunterPanel';
 import { UpgradePanel } from './components/UpgradePanel';
@@ -36,6 +39,12 @@ function App() {
     recordLeaderboardSync,
     resetGame,
     markBreakingNewsSeen,
+    acceptContract,
+    deliverContract,
+    unlockContractSlot,
+    buyStock,
+    sellStock,
+    markStockNewsSeen,
     addToast,
   } = useGame();
 
@@ -66,6 +75,11 @@ function App() {
     event.isBreaking &&
     !event.hasBeenSeen &&
     !state.news.seenBreakingEventIds.includes(event.id),
+  ) ?? null;
+  const unseenMarketBreakingNews = state.stockMarket.activeStockNews.find((article) =>
+    article.isBreaking &&
+    !article.hasBeenSeen &&
+    !state.stockMarket.seenStockNewsIds.includes(article.id),
   ) ?? null;
 
   const handleReset = useCallback(() => {
@@ -120,6 +134,12 @@ function App() {
             </NavLink>
             <NavLink to="/news" className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
               News
+            </NavLink>
+            <NavLink to="/contracts" className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
+              Contracts
+            </NavLink>
+            <NavLink to="/stocks" className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
+              Stock Market
             </NavLink>
             <NavLink to="/leaderboard" className={({ isActive }) => `game-nav__link ${isActive ? 'game-nav__link--active' : ''}`}>
               Leaderboard
@@ -226,6 +246,27 @@ function App() {
             )}
           />
           <Route
+            path="/contracts"
+            element={(
+              <ContractsPage
+                state={state}
+                onAcceptContract={acceptContract}
+                onDeliverContract={deliverContract}
+                onUnlockContractSlot={unlockContractSlot}
+              />
+            )}
+          />
+          <Route
+            path="/stocks"
+            element={(
+              <StockMarketPage
+                state={state}
+                onBuyStock={buyStock}
+                onSellStock={sellStock}
+              />
+            )}
+          />
+          <Route
             path="/leaderboard"
             element={(
               <LeaderboardPage
@@ -259,6 +300,7 @@ function App() {
         <Toast toasts={toasts} />
         <FloatingText items={floatingTexts} />
         <BreakingNewsModal event={unseenBreakingEvent} onClose={markBreakingNewsSeen} />
+        <MarketBreakingNewsModal article={unseenMarketBreakingNews} onClose={markStockNewsSeen} />
 
         <AuthPanel
           open={showAuth}

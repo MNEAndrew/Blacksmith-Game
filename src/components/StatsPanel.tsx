@@ -13,6 +13,7 @@ import {
   getInventoryCount,
   getTotalProductionPerSecond,
 } from '../utils/gameLogic';
+import { calculatePortfolioSummary, getFavoriteStock } from '../utils/portfolioCalculations';
 
 interface StatsPanelProps {
   state: GameState;
@@ -174,6 +175,47 @@ function getAchievementProgress(state: GameState, achievementId: string): number
     }
     case 'mithril-smith':
       return Math.min(1, (state.craftedCounts['mithril-pickaxe'] ?? 0) / 1);
+    case 'first-contract':
+      return Math.min(1, state.contracts.contractStats.completed / 1);
+    case 'reliable-supplier':
+      return Math.min(1, state.contracts.contractStats.completed / 10);
+    case 'royal-contractor':
+      return Math.min(1, state.contracts.contractStats.completed / 25);
+    case 'high-risk-high-reward':
+      return Math.min(1, state.contracts.contractStats.legendaryCompleted / 1);
+    case 'deadline-survivor':
+      return Math.min(1, state.contracts.contractStats.deadlineSurvivorCompletions / 1);
+    case 'costly-mistake':
+      return Math.min(1, state.contracts.contractStats.failed / 1);
+    case 'perfect-dealer':
+      return Math.min(1, state.contracts.contractStats.bestCompletionStreak / 10);
+    case 'contract-baron':
+      return Math.min(1, state.contracts.unlockedContractSlots / 3);
+    case 'first-investor':
+      return Math.min(1, state.stockMarket.marketStats.totalBuys / 1);
+    case 'paper-hands':
+      return (state.stockMarket.marketStats.worstTrade ?? 0) < 0 ? 1 : 0;
+    case 'diamond-ledger': {
+      const summary = calculatePortfolioSummary(state.stockMarket);
+      const biggest = summary.biggestHolding?.currentValue ?? 0;
+      return Math.min(1, biggest / 1_000);
+    }
+    case 'market-baron':
+      return Math.min(1, calculatePortfolioSummary(state.stockMarket).totalPortfolioValue / 100_000);
+    case 'disaster-trader':
+      return Math.min(1, state.stockMarket.marketStats.disasterProfits / 1);
+    case 'sector-specialist':
+      return Math.min(1, Math.max(0, ...Array.from(new Set(state.stockMarket.companies.map((company) => company.sector))).map((sector) =>
+        Object.values(state.stockMarket.portfolio).filter((position) =>
+          position.shares > 0 && state.stockMarket.companies.find((company) => company.ticker === position.ticker)?.sector === sector,
+        ).length,
+      )) / 5);
+    case 'diversified':
+      return Math.min(1, Object.values(state.stockMarket.portfolio).filter((position) => position.shares > 0).length / 10);
+    case 'panic-seller':
+      return Math.min(1, state.stockMarket.marketStats.panicSells / 1);
+    case 'bullish-bet':
+      return Math.min(1, state.stockMarket.marketStats.bullishBuys / 1);
     default:
       return 0;
   }
@@ -204,6 +246,8 @@ export function StatsPanel({
   }, []);
 
   const production = getTotalProductionPerSecond(modifiers);
+  const portfolioSummary = calculatePortfolioSummary(state.stockMarket);
+  const favoriteStock = getFavoriteStock(state.stockMarket.transactions);
   const rank = getRankInfo(state.resources.reputation);
   const achievementCount = ACHIEVEMENTS.filter((achievement) => state.achievementsUnlocked[achievement.id]).length;
   const achievementPercent = ACHIEVEMENTS.length > 0 ? (achievementCount / ACHIEVEMENTS.length) * 100 : 0;
@@ -276,6 +320,8 @@ export function StatsPanel({
           <StatCard label="Best synced reputation" value={formatNumber(state.stats.bestSyncedReputation)} detail={state.stats.lastSyncedAt ? formatDate(state.stats.lastSyncedAt) : 'Not synced yet'} />
           <StatCard label="Current coins" value={formatNumber(state.resources.coins)} detail={`${formatNumber(state.stats.totalCoinsEarned)} earned all time`} />
           <StatCard label="News events seen" value={formatNumber(state.stats.totalNewsEventsSeen)} detail={`${state.news.activeEvents.length} active now`} />
+          <StatCard label="Contracts completed" value={formatNumber(state.contracts.contractStats.completed)} detail={`${state.contracts.activeContracts.length} active now`} />
+          <StatCard label="Portfolio value" value={formatNumber(portfolioSummary.totalPortfolioValue)} detail={`${state.stockMarket.companies.length} fake tickers`} />
           <StatCard label="Total play time" value={formatDuration(playTime)} detail={`First played ${formatDate(state.stats.firstPlayedAt)}`} />
           <StatCard label="Last saved" value={formatDate(state.stats.lastSavedAt)} detail="Local browser save" />
           <StatCard label="Game stage" value={rank.current.title} detail={rank.next ? `Next: ${rank.next.title}` : 'Top rank reached'} />
@@ -361,6 +407,39 @@ export function StatsPanel({
             <StatCard label="Time under negative modifiers" value={formatDuration(state.stats.timeUnderNegativeNewsMs)} />
             <StatCard label="Coins gained from event bonuses" value={formatNumber(state.stats.coinsGainedFromEventBonuses)} />
             <StatCard label="Reputation gained from event bonuses" value={formatNumber(state.stats.reputationGainedFromEventBonuses)} />
+          </div>
+        </section>
+
+        <section className="panel stats-section">
+          <h3>Contracts</h3>
+          <div className="stats-card-grid stats-card-grid--compact">
+            <StatCard label="Completed" value={formatNumber(state.contracts.contractStats.completed)} />
+            <StatCard label="Failed" value={formatNumber(state.contracts.contractStats.failed)} />
+            <StatCard label="Expired" value={formatNumber(state.contracts.contractStats.expired)} />
+            <StatCard label="Coins earned" value={formatNumber(state.contracts.contractStats.coinsEarned)} />
+            <StatCard label="Reputation earned" value={formatNumber(state.contracts.contractStats.reputationEarned)} />
+            <StatCard label="Reputation lost" value={formatNumber(state.contracts.contractStats.reputationLost)} />
+            <StatCard label="Largest reward" value={formatNumber(state.contracts.contractStats.largestReward)} />
+            <StatCard label="Worst penalty" value={formatNumber(state.contracts.contractStats.worstPenalty)} />
+            <StatCard label="Active slots unlocked" value={`${state.contracts.unlockedContractSlots} / 3`} />
+          </div>
+        </section>
+
+        <section className="panel stats-section">
+          <h3>Stock Market</h3>
+          <div className="stats-card-grid stats-card-grid--compact">
+            <StatCard label="Total stock purchases" value={formatNumber(state.stockMarket.marketStats.totalBuys)} />
+            <StatCard label="Total stock sales" value={formatNumber(state.stockMarket.marketStats.totalSells)} />
+            <StatCard label="Realized profit/loss" value={formatNumber(state.stockMarket.marketStats.realizedProfitLoss)} />
+            <StatCard label="Unrealized profit/loss" value={formatNumber(portfolioSummary.unrealizedProfitLoss)} />
+            <StatCard label="Total portfolio value" value={formatNumber(portfolioSummary.totalPortfolioValue)} />
+            <StatCard label="Best stock trade" value={state.stockMarket.marketStats.bestTrade === null ? 'None yet' : formatNumber(state.stockMarket.marketStats.bestTrade)} />
+            <StatCard label="Worst stock trade" value={state.stockMarket.marketStats.worstTrade === null ? 'None yet' : formatNumber(state.stockMarket.marketStats.worstTrade)} />
+            <StatCard label="Favorite stock" value={favoriteStock ?? 'None yet'} />
+            <StatCard label="Biggest holding" value={portfolioSummary.biggestHolding?.ticker ?? 'None yet'} />
+            <StatCard label="Market news seen" value={formatNumber(state.stockMarket.marketStats.marketNewsSeen)} />
+            <StatCard label="Negative event losses" value={formatNumber(state.stockMarket.marketStats.coinsLostFromNegativeMarketEvents)} />
+            <StatCard label="Positive event gains" value={formatNumber(state.stockMarket.marketStats.coinsGainedFromPositiveMarketEvents)} />
           </div>
         </section>
 

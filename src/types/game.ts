@@ -1,4 +1,6 @@
+import type { ContractsState } from './contracts';
 import type { NewsEvent, NewsState } from './news';
+import type { StockMarketState } from './stocks';
 
 export const MATERIAL_ORDER = [
   'wood',
@@ -198,6 +200,8 @@ export interface GameState {
   activeCraftingSpecialists: Record<string, boolean>;
   activeCrafts: Record<string, CraftProgress>;
   news: NewsState;
+  contracts: ContractsState;
+  stockMarket: StockMarketState;
 }
 
 export interface ToastMessage {
@@ -356,6 +360,57 @@ export function createInitialState(): GameState {
       seenBreakingEventIds: [],
       lastNewsGeneratedAt: null,
       totalNewsEventsSeen: 0,
+    },
+    contracts: {
+      availableContracts: [],
+      activeContracts: [],
+      contractHistory: [],
+      lastContractGeneratedAt: null,
+      activeContractSlots: 1,
+      maxActiveContractSlots: 3,
+      unlockedContractSlots: 1,
+      contractStats: {
+        completed: 0,
+        failed: 0,
+        expired: 0,
+        coinsEarned: 0,
+        reputationEarned: 0,
+        reputationLost: 0,
+        penaltiesPaid: 0,
+        largestReward: 0,
+        worstPenalty: 0,
+        slotsUnlocked: 1,
+        legendaryCompleted: 0,
+        deadlineSurvivorCompletions: 0,
+        currentCompletionStreak: 0,
+        bestCompletionStreak: 0,
+      },
+    },
+    stockMarket: {
+      companies: [],
+      portfolio: {},
+      transactions: [],
+      stockNewsHistory: [],
+      activeStockNews: [],
+      seenStockNewsIds: [],
+      lastStockUpdateAt: null,
+      lastStockNewsGeneratedAt: null,
+      marketStats: {
+        totalBuys: 0,
+        totalSells: 0,
+        realizedProfitLoss: 0,
+        dividendsEarned: 0,
+        bestTrade: null,
+        worstTrade: null,
+        marketNewsSeen: 0,
+        totalSharesBought: 0,
+        totalSharesSold: 0,
+        coinsLostFromNegativeMarketEvents: 0,
+        coinsGainedFromPositiveMarketEvents: 0,
+        panicSells: 0,
+        bullishBuys: 0,
+        disasterProfits: 0,
+      },
     },
   };
 }

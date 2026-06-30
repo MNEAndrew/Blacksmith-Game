@@ -595,7 +595,9 @@ export function canPurchaseUpgrade(state: GameState, upgradeId: string): boolean
 }
 
 export function formatNumber(value: number): string {
-  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+  if (!Number.isFinite(value)) return '0';
+  if (value < 0) return `-${formatNumber(Math.abs(value))}`;
+  const safeValue = value;
   if (safeValue >= 1_000_000) return `${(safeValue / 1_000_000).toFixed(1)}M`;
   if (safeValue >= 10_000) return `${(safeValue / 1_000).toFixed(1)}K`;
   return Math.floor(safeValue).toLocaleString();
