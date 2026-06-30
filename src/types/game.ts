@@ -1,3 +1,5 @@
+import type { NewsEvent, NewsState } from './news';
+
 export const MATERIAL_ORDER = [
   'wood',
   'stone',
@@ -152,6 +154,12 @@ export interface GameStats {
   bestProductionPerSecond: number;
   bestSyncedReputation: number;
   lastSyncedAt: string | null;
+  totalNewsEventsSeen: number;
+  mostImpactfulNewsEventHeadline: string | null;
+  timeUnderPositiveNewsMs: number;
+  timeUnderNegativeNewsMs: number;
+  coinsGainedFromEventBonuses: number;
+  reputationGainedFromEventBonuses: number;
 }
 
 export interface BlacksmithExpert {
@@ -189,6 +197,7 @@ export interface GameState {
   blacksmithExperts: BlacksmithExpert[];
   activeCraftingSpecialists: Record<string, boolean>;
   activeCrafts: Record<string, CraftProgress>;
+  news: NewsState;
 }
 
 export interface ToastMessage {
@@ -208,8 +217,16 @@ export interface GameModifiers {
   gatherPerClick: Record<MaterialKey, number>;
   materialPerSecond: Record<MaterialKey, number>;
   sellMultiplier: number;
+  categorySellMultipliers: Record<CraftableCategory, number>;
+  specificItemValueMultipliers: Record<string, number>;
   automationSpeed: number;
+  craftSpeedMultiplier: number;
+  categoryCraftSpeedMultipliers: Record<CraftableCategory, number>;
+  specificItemCraftSpeedMultipliers: Record<string, number>;
   reputationMultiplier: number;
+  upgradeCostMultiplier: number;
+  activeNewsEvents: NewsEvent[];
+  eventEffectSummaries: string[];
 }
 
 export const INITIAL_RESOURCES: Resources = {
@@ -287,6 +304,12 @@ export const INITIAL_STATS: GameStats = {
   bestProductionPerSecond: 0,
   bestSyncedReputation: 0,
   lastSyncedAt: null,
+  totalNewsEventsSeen: 0,
+  mostImpactfulNewsEventHeadline: null,
+  timeUnderPositiveNewsMs: 0,
+  timeUnderNegativeNewsMs: 0,
+  coinsGainedFromEventBonuses: 0,
+  reputationGainedFromEventBonuses: 0,
 };
 
 export const INITIAL_BLACKSMITH_EXPERTS: BlacksmithExpert[] = [
@@ -327,5 +350,12 @@ export function createInitialState(): GameState {
     blacksmithExperts: INITIAL_BLACKSMITH_EXPERTS.map((expert) => ({ ...expert })),
     activeCraftingSpecialists: {},
     activeCrafts: {},
+    news: {
+      activeEvents: [],
+      newsHistory: [],
+      seenBreakingEventIds: [],
+      lastNewsGeneratedAt: null,
+      totalNewsEventsSeen: 0,
+    },
   };
 }

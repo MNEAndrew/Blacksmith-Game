@@ -21,6 +21,12 @@ import {
 } from '../types/game';
 import { UPGRADES_BY_ID } from '../data/upgrades';
 import { CRAFTABLE_ITEMS, PICKAXE_ITEM_BY_MATERIAL } from '../data/items';
+import {
+  calculateResourceGain,
+  calculateSellValue,
+  getActiveEventModifiers,
+  getActiveNewsEvents,
+} from './eventModifiers';
 
 export interface ProgressInfo {
   current: number;
@@ -73,10 +79,10 @@ export function getPickaxeInventoryCount(state: GameState, material: MaterialKey
   return state.inventory[getPickaxeItemId(material)] ?? 0;
 }
 
-export function getUpgradeCost(upgradeId: string, currentLevel: number): number {
+export function getUpgradeCost(upgradeId: string, currentLevel: number, modifiers?: Pick<GameModifiers, 'upgradeCostMultiplier'>): number {
   const upgrade = UPGRADES_BY_ID[upgradeId];
   if (!upgrade) return Infinity;
-  return Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, currentLevel));
+  return Math.max(1, Math.floor(upgrade.baseCost * Math.pow(upgrade.costMultiplier, currentLevel) * (modifiers?.upgradeCostMultiplier ?? 1)));
 }
 
 export function getUpgradeLevel(state: GameState, upgradeId: string): number {
@@ -160,10 +166,13 @@ export function canUnlockMaterial(state: GameState, material: MaterialKey): bool
   return true;
 }
 
-export function computeModifiers(state: GameState): GameModifiers {
+export function computeModifiers(state: GameState, options: { includeNews?: boolean } = {}): GameModifiers {
+  const includeNews = options.includeNews ?? true;
   const levels = state.upgradeLevels;
   const gatherPerClick = createMaterialRecord(1);
   const materialPerSecond = createMaterialRecord(0);
+  const activeNewsEvents = includeNews ? getActiveNewsEvents(state) : [];
+  const newsModifiers = getActiveEventModifiers(activeNewsEvents);
 
   const toolLevel = levels['stronger-tools'] ?? 0;
   const bellows = levels['master-bellows'] ?? 0;
@@ -172,7 +181,7 @@ export function computeModifiers(state: GameState): GameModifiers {
   const automationSpeed = 1 + bellows * 0.18;
 
   for (const material of MATERIAL_ORDER) {
-    gatherPerClick[material] = 1 + toolLevel;
+    gatherPerClick[material] = calculateResourceGain(1 + toolLevel, material, 'manual', activeNewsEvents);
   }
 
   for (const upgrade of Object.values(UPGRADES_BY_ID)) {
@@ -188,12 +197,29 @@ export function computeModifiers(state: GameState): GameModifiers {
     }
   }
 
+  for (const material of MATERIAL_ORDER) {
+    materialPerSecond[material] = calculateResourceGain(
+      materialPerSecond[material],
+      material,
+      'auto',
+      activeNewsEvents,
+    );
+  }
+
   return {
     gatherPerClick,
     materialPerSecond,
-    sellMultiplier: 1 + furnace * 0.12,
+    sellMultiplier: (1 + furnace * 0.12) * newsModifiers.sellMultiplier,
+    categorySellMultipliers: newsModifiers.categorySellMultipliers,
+    specificItemValueMultipliers: newsModifiers.specificItemValueMultipliers,
     automationSpeed,
-    reputationMultiplier: 1 + banner * 0.15,
+    craftSpeedMultiplier: newsModifiers.craftSpeedMultiplier,
+    categoryCraftSpeedMultipliers: newsModifiers.categoryCraftSpeedMultipliers,
+    specificItemCraftSpeedMultipliers: newsModifiers.specificItemCraftSpeedMultipliers,
+    reputationMultiplier: (1 + banner * 0.15) * newsModifiers.reputationGainMultiplier,
+    upgradeCostMultiplier: newsModifiers.upgradeCostMultiplier,
+    activeNewsEvents,
+    eventEffectSummaries: newsModifiers.effectSummaries,
   };
 }
 
@@ -303,6 +329,12 @@ export function getCraftingSpecialistCostPerMinute(
   return Math.max(1, Math.ceil(getSellPrice(item, modifiers) * 0.1));
 }
 
+export function getCraftSpeedMultiplierForItem(item: CraftableItem, modifiers: GameModifiers): number {
+  return modifiers.craftSpeedMultiplier *
+    modifiers.categoryCraftSpeedMultipliers[item.category] *
+    (modifiers.specificItemCraftSpeedMultipliers[item.id] ?? 1);
+}
+
 export function getAssignedExpertForItem(
   state: GameState,
   itemId: string,
@@ -390,13 +422,14 @@ function getCheapestCraftTargetForResource(
 }
 
 function getNextCoinTarget(state: GameState): ProgressInfo | null {
+  const modifiers = computeModifiers(state);
   const targets = Object.values(UPGRADES_BY_ID)
     .filter((upgrade) => upgrade.unlockRequirement == null || meetsUnlockRequirement(upgrade.unlockRequirement, state))
     .map((upgrade) => {
       const level = getUpgradeLevel(state, upgrade.id);
       return {
         upgrade,
-        cost: level >= upgrade.maxLevel ? Infinity : getUpgradeCost(upgrade.id, level),
+        cost: level >= upgrade.maxLevel ? Infinity : getUpgradeCost(upgrade.id, level, modifiers),
       };
     })
     .filter(({ cost }) => Number.isFinite(cost))
@@ -529,7 +562,11 @@ export function recordCraftedItem(
 }
 
 export function getSellPrice(item: CraftableItem, modifiers: GameModifiers): number {
-  return Math.floor(item.coinValue * modifiers.sellMultiplier);
+  return Math.max(1, Math.floor(
+    calculateSellValue(item, modifiers.sellMultiplier, []) *
+    modifiers.categorySellMultipliers[item.category] *
+    (modifiers.specificItemValueMultipliers[item.id] ?? 1),
+  ));
 }
 
 export function getReputationGain(item: CraftableItem, modifiers: GameModifiers): number {
@@ -553,7 +590,7 @@ export function canPurchaseUpgrade(state: GameState, upgradeId: string): boolean
   if (upgrade.unlockRequirement && !meetsUnlockRequirement(upgrade.unlockRequirement, state)) return false;
   const level = getUpgradeLevel(state, upgradeId);
   if (level >= upgrade.maxLevel) return false;
-  const cost = getUpgradeCost(upgradeId, level);
+  const cost = getUpgradeCost(upgradeId, level, computeModifiers(state));
   return state.resources.coins >= cost;
 }
 

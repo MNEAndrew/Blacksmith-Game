@@ -1,15 +1,24 @@
 import { useCallback, useEffect, useState, type MouseEvent } from 'react';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { ITEMS_BY_ID } from '../data/items';
+import {
+  INITIAL_NEWS_EVENT_DELAY_MS,
+  MAX_ACTIVE_NEWS_EVENTS,
+  NEWS_EVENT_INTERVAL_MS,
+  NEWS_EVENT_TICK_MS,
+  NEWS_HISTORY_LIMIT,
+} from '../data/newsEvents';
 import { UPGRADES_BY_ID } from '../data/upgrades';
 import type { FloatingTextItem, GameState, GemKey, MaterialKey, ToastMessage } from '../types/game';
 import { GEM_LABELS, GEM_ORDER, MATERIAL_LABELS, createEmptyMaterialTotals, createInitialState } from '../types/game';
+import { getActiveEventModifiers, getEventImpactScore } from '../utils/eventModifiers';
 import {
   canAffordCraftable,
   canManuallyAcquireMaterial,
   canPurchaseUpgrade,
   canUnlockMaterial,
   computeModifiers,
+  getCraftSpeedMultiplierForItem,
   getCraftingSpecialistCostPerMinute,
   getCraftingSpecialistCraftKey,
   getPreviousMaterial,
@@ -21,6 +30,7 @@ import {
   isItemUnlocked,
   recordCraftedItem,
 } from '../utils/gameLogic';
+import { generateNewsEvent } from '../utils/newsGenerator';
 import { clearSave, loadGame, saveGame } from '../utils/saveGame';
 
 let toastId = 0;
@@ -173,8 +183,11 @@ export function useGame() {
 
       const sellCount = Math.min(quantity, count);
       const modifiers = computeModifiers(prev);
+      const baseModifiers = computeModifiers(prev, { includeNews: false });
       const coinsGained = getSellPrice(item, modifiers) * sellCount;
       const repGained = getReputationGain(item, modifiers) * sellCount;
+      const baseCoinsGained = getSellPrice(item, baseModifiers) * sellCount;
+      const baseRepGained = getReputationGain(item, baseModifiers) * sellCount;
 
       const inventory = { ...prev.inventory };
       inventory[itemId] = count - sellCount;
@@ -193,6 +206,8 @@ export function useGame() {
           totalCoinsEarned: prev.stats.totalCoinsEarned + coinsGained,
           totalItemsSold: prev.stats.totalItemsSold + sellCount,
           totalCoinsFromSelling: prev.stats.totalCoinsFromSelling + coinsGained,
+          coinsGainedFromEventBonuses: prev.stats.coinsGainedFromEventBonuses + Math.max(0, coinsGained - baseCoinsGained),
+          reputationGainedFromEventBonuses: prev.stats.reputationGainedFromEventBonuses + Math.max(0, repGained - baseRepGained),
         },
       };
 
@@ -209,7 +224,7 @@ export function useGame() {
       if (!canPurchaseUpgrade(prev, upgradeId)) return prev;
 
       const level = getUpgradeLevel(prev, upgradeId);
-      const cost = getUpgradeCost(upgradeId, level);
+      const cost = getUpgradeCost(upgradeId, level, computeModifiers(prev));
       const upgradeLevels = { ...prev.upgradeLevels, [upgradeId]: level + 1 };
       const treasureHunter = upgrade.effectType === 'treasureHunter'
         ? {
@@ -318,6 +333,23 @@ export function useGame() {
         lastSyncedAt: syncedAt,
       },
     }));
+  }, []);
+
+  const markBreakingNewsSeen = useCallback((eventId: string) => {
+    setState((prev) => {
+      if (prev.news.seenBreakingEventIds.includes(eventId)) return prev;
+
+      return {
+        ...prev,
+        news: {
+          ...prev.news,
+          seenBreakingEventIds: [...prev.news.seenBreakingEventIds, eventId],
+          activeEvents: prev.news.activeEvents.map((event) =>
+            event.id === eventId ? { ...event, hasBeenSeen: true } : event,
+          ),
+        },
+      };
+    });
   }, []);
 
   const resetGame = useCallback(() => {
@@ -440,7 +472,8 @@ export function useGame() {
 
               if (!activeCraft) continue;
 
-              const elapsedMs = activeCraft.elapsedMs + (GAME_TICK_MS * modifiers.automationSpeed);
+              const elapsedMs = activeCraft.elapsedMs +
+                (GAME_TICK_MS * modifiers.automationSpeed * getCraftSpeedMultiplierForItem(item, modifiers));
               if (elapsedMs >= activeCraft.requiredMs) {
                 const activeCrafts = { ...next.activeCrafts };
                 delete activeCrafts[craftKey];
@@ -476,6 +509,68 @@ export function useGame() {
     return () => clearInterval(interval);
   }, [addToast, checkAchievements]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setState((prev) => {
+        const now = Date.now();
+        let activeEvents = prev.news.activeEvents.filter((event) => event.expiresAt > now);
+        const expiredEvents = prev.news.activeEvents
+          .filter((event) => event.expiresAt <= now)
+          .map((event) => ({ ...event, hasBeenSeen: event.hasBeenSeen || prev.news.seenBreakingEventIds.includes(event.id) }));
+        let newsHistory = [...expiredEvents, ...prev.news.newsHistory]
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, NEWS_HISTORY_LIMIT);
+        let lastNewsGeneratedAt = prev.news.lastNewsGeneratedAt;
+        let generated = false;
+
+        if (lastNewsGeneratedAt === null) {
+          lastNewsGeneratedAt = now - NEWS_EVENT_INTERVAL_MS + INITIAL_NEWS_EVENT_DELAY_MS;
+        }
+
+        if (activeEvents.length < MAX_ACTIVE_NEWS_EVENTS && now - lastNewsGeneratedAt >= NEWS_EVENT_INTERVAL_MS) {
+          const event = generateNewsEvent(now);
+          activeEvents = [event, ...activeEvents].slice(0, MAX_ACTIVE_NEWS_EVENTS);
+          lastNewsGeneratedAt = now;
+          generated = true;
+          setTimeout(() => {
+            addToast(`Breaking news: ${event.headline}`, event.isBreaking ? 'warning' : 'info');
+          }, 0);
+        }
+
+        const activeModifiers = getActiveEventModifiers(activeEvents);
+        const hasPositive = activeModifiers.positiveEffectCount > 0;
+        const hasNegative = activeModifiers.negativeEffectCount > 0;
+        const allEvents = [...activeEvents, ...newsHistory];
+        const mostImpactful = allEvents
+          .slice()
+          .sort((a, b) => getEventImpactScore(b) - getEventImpactScore(a))[0];
+        const changed = generated || expiredEvents.length > 0 || hasPositive || hasNegative || prev.news.lastNewsGeneratedAt === null;
+
+        if (!changed) return prev;
+
+        return {
+          ...prev,
+          news: {
+            ...prev.news,
+            activeEvents,
+            newsHistory,
+            lastNewsGeneratedAt,
+            totalNewsEventsSeen: prev.news.totalNewsEventsSeen + (generated ? 1 : 0),
+          },
+          stats: {
+            ...prev.stats,
+            totalNewsEventsSeen: prev.stats.totalNewsEventsSeen + (generated ? 1 : 0),
+            mostImpactfulNewsEventHeadline: mostImpactful?.headline ?? prev.stats.mostImpactfulNewsEventHeadline,
+            timeUnderPositiveNewsMs: prev.stats.timeUnderPositiveNewsMs + (hasPositive ? NEWS_EVENT_TICK_MS : 0),
+            timeUnderNegativeNewsMs: prev.stats.timeUnderNegativeNewsMs + (hasNegative ? NEWS_EVENT_TICK_MS : 0),
+          },
+        };
+      });
+    }, NEWS_EVENT_TICK_MS);
+
+    return () => clearInterval(interval);
+  }, [addToast]);
+
   const modifiers = computeModifiers(state);
 
   return {
@@ -492,6 +587,7 @@ export function useGame() {
     sendTreasureHunter,
     recordLeaderboardSync,
     resetGame,
+    markBreakingNewsSeen,
     addToast,
   };
 }

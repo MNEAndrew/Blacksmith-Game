@@ -14,6 +14,8 @@ import {
   createEmptyMaterialTotals,
   createInitialState,
 } from '../types/game';
+import type { EventEffect, NewsEvent, NewsEventType, NewsSeverity } from '../types/news';
+import { INITIAL_NEWS_STATE } from '../types/news';
 
 const SAVE_KEY = 'forge-rush-save-v1';
 
@@ -34,6 +36,114 @@ function safeInteger(value: unknown): number {
 function safeDateString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   return Number.isNaN(Date.parse(value)) ? null : value;
+}
+
+function safeNullableString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function normalizeNewsEffect(value: unknown): EventEffect | null {
+  const raw = asRecord(value);
+  const type = raw.type;
+  const multiplier = typeof raw.multiplier === 'number' && Number.isFinite(raw.multiplier)
+    ? raw.multiplier
+    : 1;
+  const label = typeof raw.label === 'string' && raw.label.trim() ? raw.label : 'Market effect';
+  const allowedTypes: EventEffect['type'][] = [
+    'itemSellValueMultiplier',
+    'categorySellValueMultiplier',
+    'resourceGainMultiplier',
+    'autoProductionMultiplier',
+    'craftSpeedMultiplier',
+    'reputationGainMultiplier',
+    'upgradeCostMultiplier',
+    'specificItemValueMultiplier',
+    'specificResourceMultiplier',
+  ];
+
+  if (!allowedTypes.includes(type as EventEffect['type'])) return null;
+  if (multiplier <= 0) return null;
+
+  const effect: EventEffect = {
+    type: type as EventEffect['type'],
+    multiplier,
+    label,
+  };
+
+  if (typeof raw.category === 'string' && Object.keys(CRAFTABLE_CATEGORY_LABELS).includes(raw.category)) {
+    effect.category = raw.category as CraftableCategory;
+  }
+  if (typeof raw.resource === 'string' && MATERIAL_ORDER.includes(raw.resource as never)) {
+    effect.resource = raw.resource as EventEffect['resource'];
+  }
+  if (typeof raw.itemId === 'string' && ITEMS_BY_ID[raw.itemId]) {
+    effect.itemId = raw.itemId;
+  }
+
+  return effect;
+}
+
+function normalizeNewsEvent(value: unknown): NewsEvent | null {
+  const raw = asRecord(value);
+  const allowedTypes: NewsEventType[] = ['war', 'disaster', 'market', 'industry', 'festival', 'scandal', 'ad', 'propaganda', 'rumor'];
+  const allowedSeverities: NewsSeverity[] = ['minor', 'moderate', 'major', 'legendary'];
+  const type = raw.type;
+  const severity = raw.severity;
+  const createdAt = safeNumber(raw.createdAt);
+  const expiresAt = safeNumber(raw.expiresAt);
+  const effects = Array.isArray(raw.effects)
+    ? raw.effects.map(normalizeNewsEffect).filter((effect): effect is EventEffect => effect !== null)
+    : [];
+
+  if (typeof raw.id !== 'string' || !raw.id.trim()) return null;
+  if (!allowedTypes.includes(type as NewsEventType)) return null;
+  if (!allowedSeverities.includes(severity as NewsSeverity)) return null;
+  if (createdAt <= 0 || expiresAt <= 0 || expiresAt <= createdAt) return null;
+
+  return {
+    id: raw.id,
+    type: type as NewsEventType,
+    headline: typeof raw.headline === 'string' && raw.headline.trim() ? raw.headline : 'Untitled Market Notice',
+    source: typeof raw.source === 'string' && raw.source.trim() ? raw.source : 'The Anvil Gazette',
+    summary: typeof raw.summary === 'string' && raw.summary.trim() ? raw.summary : 'A market event is affecting the forge.',
+    body: typeof raw.body === 'string' && raw.body.trim() ? raw.body : 'Details are still being hammered flat.',
+    severity: severity as NewsSeverity,
+    durationSeconds: Math.max(1, safeInteger(raw.durationSeconds)),
+    createdAt,
+    expiresAt,
+    effects,
+    isBreaking: raw.isBreaking === true,
+    hasBeenSeen: raw.hasBeenSeen === true,
+  };
+}
+
+function normalizeNewsState(value: unknown): GameState['news'] {
+  const raw = asRecord(value);
+  const now = Date.now();
+  const activeEvents = Array.isArray(raw.activeEvents)
+    ? raw.activeEvents.map(normalizeNewsEvent).filter((event): event is NewsEvent => event !== null && event.expiresAt > now)
+    : [];
+  const savedHistory = Array.isArray(raw.newsHistory)
+    ? raw.newsHistory.map(normalizeNewsEvent).filter((event): event is NewsEvent => event !== null)
+    : [];
+  const expiredFromActive = Array.isArray(raw.activeEvents)
+    ? raw.activeEvents.map(normalizeNewsEvent).filter((event): event is NewsEvent => event !== null && event.expiresAt <= now)
+    : [];
+  const newsHistory = [...expiredFromActive, ...savedHistory]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 30);
+
+  return {
+    activeEvents,
+    newsHistory,
+    seenBreakingEventIds: Array.isArray(raw.seenBreakingEventIds)
+      ? raw.seenBreakingEventIds.filter((id): id is string => typeof id === 'string')
+      : [...INITIAL_NEWS_STATE.seenBreakingEventIds],
+    lastNewsGeneratedAt: typeof raw.lastNewsGeneratedAt === 'number' && Number.isFinite(raw.lastNewsGeneratedAt)
+      ? raw.lastNewsGeneratedAt
+      : null,
+    totalNewsEventsSeen: safeInteger(raw.totalNewsEventsSeen),
+  };
 }
 
 function normalizeExperts(value: unknown): BlacksmithExpert[] {
@@ -236,6 +346,12 @@ function normalizeGameState(value: unknown): GameState {
       bestProductionPerSecond: safeNumber(stats.bestProductionPerSecond),
       bestSyncedReputation: safeNumber(stats.bestSyncedReputation),
       lastSyncedAt: safeDateString(stats.lastSyncedAt),
+      totalNewsEventsSeen: safeInteger(stats.totalNewsEventsSeen),
+      mostImpactfulNewsEventHeadline: safeNullableString(stats.mostImpactfulNewsEventHeadline),
+      timeUnderPositiveNewsMs: safeNumber(stats.timeUnderPositiveNewsMs),
+      timeUnderNegativeNewsMs: safeNumber(stats.timeUnderNegativeNewsMs),
+      coinsGainedFromEventBonuses: safeNumber(stats.coinsGainedFromEventBonuses),
+      reputationGainedFromEventBonuses: safeNumber(stats.reputationGainedFromEventBonuses),
     },
     achievementsUnlocked: Object.fromEntries(
       Object.entries(achievementsUnlocked)
@@ -247,6 +363,7 @@ function normalizeGameState(value: unknown): GameState {
         .filter(([itemId, active]) => ITEMS_BY_ID[itemId] && active === true),
     ) as Record<string, boolean>,
     activeCrafts: normalizeActiveCrafts(raw.activeCrafts),
+    news: normalizeNewsState(raw.news),
   };
 }
 
