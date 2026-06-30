@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ResourceBar } from './ResourceBar';
 import { NewsCard } from './NewsCard';
+import { StockNewsPanel } from './StockNewsPanel';
 import { NEWS_EVENT_INTERVAL_MS } from '../data/newsEvents';
 import type { GameModifiers, GameState } from '../types/game';
 import { getActiveEventModifiers, getEffectSummary, isPositiveNewsEffect } from '../utils/eventModifiers';
@@ -163,6 +164,12 @@ export function NewsPanel({ state, modifiers }: NewsPanelProps) {
               ))}
             </div>
           </section>
+
+          <StockNewsPanel
+            activeNews={state.stockMarket.activeStockNews}
+            history={state.stockMarket.stockNewsHistory}
+            compact
+          />
         </aside>
       </section>
     </main>
